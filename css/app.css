@@ -142,6 +142,7 @@ small { font-size: .78rem; }
 .banner p { margin: 0 0 8px; color: var(--muted); }
 .card.attention { border: 1px solid var(--warn); }
 .explain { font-size: .82rem; color: var(--muted); margin: 10px 0 0; }
+.close-box { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 
 /* --- Botones --- */
 .btn {
@@ -282,12 +283,13 @@ small { font-size: .78rem; }
 .chart .c-baby { fill: var(--c-baby); }
 .chart .c-general { fill: var(--c-general); }
 .chart .c-savings { fill: var(--c-savings); }
+.chart .c-reserved { fill: var(--c-fixed); opacity: .35; }
 .chart .marker { stroke: var(--text); stroke-width: 2; }
 .chart .pos { fill: var(--olive); }
 .chart .neg { fill: var(--neg); }
 .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: .76rem; color: var(--muted); margin-top: 6px; }
 .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
-.sw.c-fixed { background: var(--c-fixed); } .sw.c-baby { background: var(--c-baby); } .sw.c-general { background: var(--c-general); } .sw.c-savings { background: var(--c-savings); }
+.sw.c-fixed { background: var(--c-fixed); } .sw.c-baby { background: var(--c-baby); } .sw.c-general { background: var(--c-general); } .sw.c-savings { background: var(--c-savings); } .sw.c-reserved { background: var(--c-fixed); opacity: .35; }
 .sw.marker { background: var(--text); height: 3px; vertical-align: 2px; }
 
 /* Ajustes */

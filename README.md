@@ -75,8 +75,13 @@ Los importes aceptan `475.50`, `475,50`, `1,075.50` o `$600`.
 - **Mes:** ingresos, gastos reales, ahorro, saldo libre (ingresos − gastos reales − ahorro), ingresos − gastos (antes de ahorrar), disponible tras pagos (ingresos − lo ya pagado − lo ya apartado), pagado y pendiente, desglose por categoría y presupuestos con lo restante o el exceso. La «estimación si gastas todo el presupuesto» se muestra aparte y nunca se resta del saldo.
 - **Año / Varios meses:** acumulados, gráfico de gasto por mes y categoría con la marca de ingresos, evolución del saldo, tabla comparativa, promedios por categoría (sólo con meses que tienen datos), presupuesto frente a gasto real por partida (más o menos de lo previsto) y las partidas donde más gastas.
 
+### Presupuestos que se restan desde el inicio (v1.2)
+- En las partidas con presupuesto (p. ej. Super $600), el **presupuesto completo se resta del saldo libre desde el primer día**. Cada compra va consumiendo ese presupuesto («Quedan $X»). Si te pasas, se resta el gasto real.
+- La franja superior muestra **Gastos** = gastos reales + presupuesto aún por gastar, y **Saldo** = lo que de verdad te queda libre.
+- **Fin de mes:** en Totales → Presupuestos, toca **«Pasar sobrante a Ahorros»**. Lo no gastado se añade a Ahorros como «Sobrante de presupuestos», el saldo no cambia y el presupuesto deja de reservarse. Se puede deshacer con «Reabrir presupuestos».
+
 ### Reglas de cálculo
-- **Presupuesto** = dinero reservado. **No** es gasto.
+- **Presupuesto** = dinero reservado. No es gasto real, pero sí se resta del saldo libre mientras no se pase a Ahorros.
 - **Gasto real** = importe directo, o suma de transacciones en partidas con desglose (el importe nunca se cuenta dos veces).
 - **Pagado** = importes directos marcados más transacciones marcadas. **Pendiente** = gasto real − pagado.
 - **Presupuesto restante** = presupuesto − gasto real (negativo = exceso).

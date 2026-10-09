@@ -2,6 +2,9 @@
 //
 // Reglas:
 //  - Partida "directa": gasto real = importe; pagado = importe si está marcada.
+//  - Los presupuestos se RESERVAN: el saldo libre resta el presupuesto completo
+//    (o el gasto real si lo supera) desde el inicio del mes. Al "pasar el
+//    sobrante a ahorros" el mes deja de reservar y el sobrante queda como ahorro.
 //  - Partida "con desglose": gasto real = suma de transacciones; pagado = suma
 //    de transacciones pagadas. El presupuesto NUNCA cuenta como gasto real.
 //  - Pendiente = gasto real − pagado.
@@ -59,14 +62,17 @@ export function monthCalc(month) {
   // Ahorros: no son gasto; se restan aparte. "Apartado" = ya transferido/guardado.
   const sv = categoryCalc(month && month.savings ? month.savings : []);
   const savings = sv.real, savingsDone = sv.paid, savingsPending = sv.pending;
+  const closed = !!(month && month.budgetsClosed);
+  const reserved = closed ? 0 : unspent;     // presupuesto aún sin gastar, ya restado del saldo
+  const committed = real + reserved;          // gastos reales + presupuesto reservado
   return {
     income, cats, real, paid, pending,
     savings, savingsDone, savingsPending, savingsCat: sv,
-    spendBalance: income - real,               // ingresos − gastos reales
-    balance: income - real - savings,          // saldo libre (ingresos − gastos reales − ahorro)
-    cashNow: income - paid - savingsDone,      // dinero que queda tras lo ya pagado y apartado
+    reserved, committed, budgetsClosed: closed,
+    spendBalance: income - real,                  // ingresos − gastos reales (informativo)
+    balance: income - committed - savings,        // saldo libre: ingresos − gastos − presupuesto reservado − ahorro
+    cashNow: income - paid - savingsDone,         // dinero que queda tras lo ya pagado y apartado
     budget, budgetReal, budgetRemaining: budget - budgetReal, unspent, over,
-    projected: income - real - savings - unspent, // estimación si se agota el presupuesto restante
     hasData: income !== 0 || real !== 0 || savings !== 0,
   };
 }
@@ -79,16 +85,16 @@ export function periodCalc(state, keys) {
   const months = sorted.map((key) => ({ key, ...monthCalc(state.months[key] || null) }));
   const withData = months.filter((m) => m.hasData);
   const n = withData.length;
-  const tot = { income: 0, real: 0, paid: 0, pending: 0, balance: 0, savings: 0, savingsDone: 0, spendBalance: 0, budget: 0, budgetReal: 0, unspent: 0, over: 0, fixed: 0, baby: 0, general: 0 };
+  const tot = { income: 0, real: 0, paid: 0, pending: 0, balance: 0, savings: 0, savingsDone: 0, spendBalance: 0, reserved: 0, committed: 0, budget: 0, budgetReal: 0, unspent: 0, over: 0, fixed: 0, baby: 0, general: 0 };
   for (const m of months) {
     tot.income += m.income; tot.real += m.real; tot.paid += m.paid; tot.pending += m.pending;
-    tot.balance += m.balance; tot.savings += m.savings; tot.savingsDone += m.savingsDone; tot.spendBalance += m.spendBalance;
+    tot.balance += m.balance; tot.savings += m.savings; tot.savingsDone += m.savingsDone; tot.spendBalance += m.spendBalance; tot.reserved += m.reserved; tot.committed += m.committed;
     tot.budget += m.budget; tot.budgetReal += m.budgetReal;
     tot.unspent += m.unspent; tot.over += m.over;
     for (const { key } of CATS) tot[key] += m.cats[key].real;
   }
   const avg = {};
-  for (const k of ['income', 'real', 'paid', 'pending', 'balance', 'savings', 'fixed', 'baby', 'general']) {
+  for (const k of ['income', 'real', 'paid', 'pending', 'balance', 'savings', 'reserved', 'committed', 'fixed', 'baby', 'general']) {
     avg[k] = n ? Math.round(tot[k] / n) : 0;
   }
 
@@ -130,4 +136,19 @@ export function periodCalc(state, keys) {
     .sort((a, b) => b.real - a.real);
 
   return { months, monthsWithData: n, totals: tot, avg, budgets, topItems };
+}
+
+/** Fin de mes: el presupuesto sin gastar pasa a Ahorros y deja de reservarse. */
+export function closeBudgets(month, makeItem) {
+  const c = monthCalc(month);
+  if (month.budgetsClosed || c.unspent <= 0) return 0;
+  month.savings.push(Object.assign(makeItem({ name: 'Sobrante de presupuestos', amount: c.unspent }), { src: 'leftover' }));
+  month.budgetsClosed = true;
+  return c.unspent;
+}
+
+/** Deshace closeBudgets: quita el sobrante de Ahorros y vuelve a reservar el presupuesto. */
+export function reopenBudgets(month) {
+  month.savings = month.savings.filter((i) => i.src !== 'leftover');
+  month.budgetsClosed = false;
 }

@@ -5,7 +5,7 @@ import {
   CATS, SAVINGS, MONTH_NAMES, newState, monthKey, parseKey, shiftKey, keyLabel, yearKeys, newItem, newTx, newIncome,
   viewMonth, ensureMonth, latestBefore, normalizeState, uid,
 } from './model.js';
-import { itemCalc, monthCalc, periodCalc } from './calc.js';
+import { itemCalc, monthCalc, periodCalc, closeBudgets, reopenBudgets } from './calc.js';
 import { createSession, seal, open, openWith, isEnvelope, MIN_PASSPHRASE } from './crypto.js';
 import { loadVault, saveVault, wipeVault, requestPersistence } from './store.js';
 import { stackedBars, balanceBars, legend } from './charts.js';
@@ -138,7 +138,7 @@ function shell() {
     ),
     h('section', { class: 'strip' },
       stripCell('Ingresos', c.income, ''),
-      stripCell('Gasto real', c.real, ''),
+      stripCell('Gastos', c.committed, ''),
       stripCell('Pendiente', c.pending, c.pending > 0 ? 'warn' : ''),
       stripCell('Ahorro', c.savings, 'sav'),
       stripCell('Saldo', c.balance, c.balance < 0 ? 'neg' : 'pos'),
@@ -447,7 +447,10 @@ async function editItem(cat, it) {
         : [{ label: 'Eliminar', value: 'month', class: 'danger' }, { label: 'Cancelar', value: null, class: 'ghost' }],
     });
     if (!choice) return;
-    mutate((mm) => { mm[cat] = mm[cat].filter((x) => x.id !== it.id); });
+    mutate((mm) => {
+      mm[cat] = mm[cat].filter((x) => x.id !== it.id);
+      if (it.src === 'leftover') mm.budgetsClosed = false; // vuelve a reservar el presupuesto
+    });
     if (choice === 'all') removeTemplate(cat, it.tpl);
     return;
   }
@@ -493,17 +496,17 @@ function monthTotals(c) {
       h('h2', null, `Resumen · ${keyLabel(app.key)}`),
       h('div', { class: 'kpis' },
         kpi('Ingresos', c.income, 'pos'),
-        kpi('Gastos reales', c.real),
+        kpi('Gastos', c.committed, '', c.reserved ? `Reales ${fmt(c.real)} + presupuesto por gastar ${fmt(c.reserved)}` : 'Gastos reales'),
         kpi('Ahorro', c.savings, 'sav', c.savingsPending ? `Por apartar ${fmt(c.savingsPending)}` : 'No es gasto'),
         kpi('Saldo libre', c.balance, c.balance < 0 ? 'neg big' : 'pos big', 'Ingresos − gastos − ahorro'),
         kpi('Pagado', c.paid, 'pos'),
         kpi('Pendiente de pago', c.pending, c.pending ? 'warn' : ''),
-        kpi('Ingresos − gastos', c.spendBalance, '', 'Antes de ahorrar'),
+        kpi('Gastado de verdad', c.real, '', 'Sin contar presupuesto por gastar'),
         kpi('Disponible tras pagos', c.cashNow, '', 'Ingresos − pagado − apartado'),
       ),
       h('p', { class: 'explain' }, (c.pending + c.savingsPending) > 0
-        ? `Hoy te quedan ${fmt(c.cashNow)} tras lo pagado${c.savings ? ' y lo ya apartado' : ''}. De eso, ${fmt(c.pending)} son pagos pendientes${c.savingsPending ? ` y ${fmt(c.savingsPending)} ahorro por apartar` : ''}. Al completarlo te quedará el saldo libre: ${fmt(c.balance)}.`
-        : `Todo está pagado${c.savings ? ' y apartado' : ''}. Saldo libre del mes: ${fmt(c.balance)}.`),
+        ? `Hoy te quedan ${fmt(c.cashNow)} tras lo pagado${c.savings ? ' y lo ya apartado' : ''}. De eso, ${fmt(c.pending)} son pagos pendientes${c.savingsPending ? `, ${fmt(c.savingsPending)} ahorro por apartar` : ''}${c.reserved ? ` y ${fmt(c.reserved)} presupuesto aún por gastar` : ''}. Lo que de verdad te queda libre: ${fmt(c.balance)}.`
+        : `Todo está pagado${c.savings ? ' y apartado' : ''}${c.reserved ? ` y quedan ${fmt(c.reserved)} de presupuesto por gastar` : ''}. Saldo libre del mes: ${fmt(c.balance)}.`),
     ),
     h('section', { class: 'card' },
       h('h2', null, 'Por categoría'),
@@ -523,11 +526,35 @@ function monthTotals(c) {
           h('div', { class: 'bl-top' }, h('span', null, it.name, h('small', null, ' · ' + label.replace('Gastos ', ''))), h('span', null, fmt(ic.real), h('small', null, ' / ' + fmt(ic.budget)))),
           h('div', { class: 'bar' + (ic.over ? ' over' : '') }, h('i', { style: { width: Math.min(100, (ic.real / ic.budget) * 100) + '%' } })),
           h('small', { class: ic.remaining < 0 ? 'neg' : 'muted' }, ic.remaining >= 0 ? `Quedan ${fmt(ic.remaining)}` : `Excedido por ${fmt(-ic.remaining)}`)))),
-        c.unspent > 0 ? h('p', { class: 'explain' }, `Estimación (no es un gasto): si gastas todo el presupuesto que queda (${fmt(c.unspent)}), el saldo libre sería ${fmt(c.projected)}.`) : null,
+        budgetCloseControls(c),
       ),
     ),
     exportCard([app.key], keyLabel(app.key)),
   );
+}
+
+function budgetCloseControls(c) {
+  if (c.budgetsClosed) {
+    return h('div', { class: 'close-box' },
+      h('p', { class: 'explain' }, '✓ Presupuestos cerrados: el sobrante ya está en Ahorros y el presupuesto dejó de reservarse.'),
+      h('button', { class: 'btn small ghost', onclick: async () => {
+        if (!(await confirmDanger('¿Reabrir presupuestos?', 'Se quitará el «Sobrante de presupuestos» de Ahorros y el presupuesto sin gastar volverá a restarse del saldo.', 'Reabrir'))) return;
+        mutate((mm) => reopenBudgets(mm));
+      } }, 'Reabrir presupuestos'));
+  }
+  if (c.unspent <= 0) return null;
+  return h('div', { class: 'close-box' },
+    h('p', { class: 'explain' }, `Los ${fmt(c.unspent)} de presupuesto que aún no has gastado ya están restados de tu saldo libre. A fin de mes, pásalos a Ahorros.`),
+    h('button', { class: 'btn small primary', onclick: async () => {
+      const ok = await choose({
+        title: `¿Pasar ${fmt(c.unspent)} a Ahorros?`,
+        message: ['Úsalo al terminar el mes. El sobrante de tus presupuestos se añade a Ahorros como «Sobrante de presupuestos» y tu saldo libre no cambia.', 'Si luego registras más compras de este mes, se restarán del saldo como gasto real. Puedes deshacerlo con «Reabrir presupuestos».'],
+        buttons: [{ label: 'Pasar a Ahorros', value: true, class: 'primary' }, { label: 'Cancelar', value: null, class: 'ghost' }],
+      });
+      if (!ok) return;
+      mutate((mm) => { closeBudgets(mm, newItem); });
+      toast('Sobrante pasado a Ahorros');
+    } }, `Pasar sobrante (${fmt(c.unspent)}) a Ahorros`));
 }
 
 function periodKeys() {
@@ -563,7 +590,7 @@ function periodTotals() {
       h('h2', null, `${label} · acumulado`),
       h('div', { class: 'kpis' },
         kpi('Ingresos', t.income, 'pos'),
-        kpi('Gastos reales', t.real),
+        kpi('Gastos', t.committed, '', t.reserved ? `Reales ${fmt(t.real)} + reservado ${fmt(t.reserved)}` : 'Gastos reales'),
         kpi('Ahorro acumulado', t.savings, 'sav', `Media ${fmt(p.avg.savings)}/mes`),
         kpi('Saldo libre acumulado', t.balance, t.balance < 0 ? 'neg big' : 'pos big', `Media ${fmt(p.avg.balance)}/mes · ${p.monthsWithData} meses con datos`),
         kpi('Pagado', t.paid, 'pos'),
@@ -574,9 +601,9 @@ function periodTotals() {
       h('h2', null, 'Gasto real y ahorro por mes'),
       stackedBars(p.months.map((mm) => ({
         label: shortLbl(mm.key), marker: mm.income,
-        parts: [{ value: mm.cats.fixed.real, cls: 'c-fixed' }, { value: mm.cats.baby.real, cls: 'c-baby' }, { value: mm.cats.general.real, cls: 'c-general' }, { value: mm.savings, cls: 'c-savings' }],
+        parts: [{ value: mm.cats.fixed.real, cls: 'c-fixed' }, { value: mm.cats.baby.real, cls: 'c-baby' }, { value: mm.cats.general.real, cls: 'c-general' }, { value: mm.reserved, cls: 'c-reserved' }, { value: mm.savings, cls: 'c-savings' }],
       }))),
-      legend([['c-fixed', 'Fijos'], ['c-baby', 'Bebé'], ['c-general', 'Generales'], ['c-savings', 'Ahorro'], ['marker', 'Ingresos']]),
+      legend([['c-fixed', 'Fijos'], ['c-baby', 'Bebé'], ['c-general', 'Generales'], ['c-reserved', 'Presupuesto por gastar'], ['c-savings', 'Ahorro'], ['marker', 'Ingresos']]),
     ),
     h('section', { class: 'card' },
       h('h2', null, 'Evolución del saldo libre mensual'),
@@ -587,9 +614,9 @@ function periodTotals() {
       h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
         h('thead', null, h('tr', null, ['Mes', 'Ingresos', 'Gastos', 'Ahorro', 'Saldo'].map((x) => h('th', null, x)))),
         h('tbody', null, p.months.map((mm) => h('tr', { class: mm.hasData ? '' : 'dim' },
-          h('td', null, shortLbl(mm.key)), h('td', null, mm.hasData ? fmt(mm.income) : '—'), h('td', null, mm.hasData ? fmt(mm.real) : '—'),
+          h('td', null, shortLbl(mm.key)), h('td', null, mm.hasData ? fmt(mm.income) : '—'), h('td', null, mm.hasData ? fmt(mm.committed) : '—'),
           h('td', null, mm.hasData ? fmt(mm.savings) : '—'), h('td', { class: mm.balance < 0 ? 'neg' : '' }, mm.hasData ? fmt(mm.balance) : '—')))),
-        h('tfoot', null, h('tr', null, h('td', null, 'Total'), h('td', null, fmt(t.income)), h('td', null, fmt(t.real)), h('td', null, fmt(t.savings)), h('td', { class: t.balance < 0 ? 'neg' : '' }, fmt(t.balance))))))),
+        h('tfoot', null, h('tr', null, h('td', null, 'Total'), h('td', null, fmt(t.income)), h('td', null, fmt(t.committed)), h('td', null, fmt(t.savings)), h('td', { class: t.balance < 0 ? 'neg' : '' }, fmt(t.balance))))))),
     h('section', { class: 'card' },
       h('h2', null, 'Por categoría'),
       h('table', { class: 'tbl' },
@@ -740,7 +767,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.1 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.2 · funciona sin conexión'),
   );
 }
 

@@ -105,25 +105,33 @@ await fill('Nombre', 'Cena'); await fill('Importe real', '50'); await submit('A�
 
 // Totales esperados: ingresos 3000; reales = 1000 + 45.99 + 475.50 + 95 + 250 + 50 = 1916.49
 // pagado = 1000 + 270.50 + 95 + 250 = 1615.50 ; pendiente = 300.99 ; saldo = 1083.51
-assert.equal(await strip('Gasto real'), '$1,916.49');
+assert.equal(await strip('Gastos'), '$2,040.99', 'gastos reales + $124.50 de presupuesto del súper aún por gastar');
 assert.equal(await strip('Pendiente'), '$300.99');
-assert.equal(await strip('Saldo'), '$1,083.51');
+assert.equal(await strip('Saldo'), '$959.01', 'el presupuesto completo ya está restado');
 
 // 6b. Ahorros: aparte de los gastos, se restan del saldo libre
 await page.getByRole('button', { name: '+ Añadir ahorro' }).click();
 await fill('Nombre', 'Fondo emergencia'); await fill('Importe del mes', '200'); await dlg().getByText('Ya está apartado').click();
 await submit('Añadir');
-assert.equal(await strip('Gasto real'), '$1,916.49', 'el ahorro no es gasto');
+assert.equal(await strip('Gastos'), '$2,040.99', 'el ahorro no es gasto');
 assert.equal(await strip('Ahorro'), '$200.00');
-assert.equal(await strip('Saldo'), '$883.51');
+assert.equal(await strip('Saldo'), '$759.01');
 assert.match(await page.locator('.cat-savings').textContent(), /OK apartado/);
 await page.locator('.cat-fixed .cat-head').scrollIntoViewIfNeeded();
 await shot('03-gastos');
 
 await page.getByRole('button', { name: 'Totales', exact: true }).click();
 const tot = await page.locator('.view').textContent();
-for (const s of ['$3,000.00', '$1,916.49', '$1,083.51', '$883.51', '$200.00', '$1,615.50', '$300.99', '$1,184.50', '$680.00']) assert.ok(tot.includes(s), 'Totales contiene ' + s);
+for (const s of ['$3,000.00', '$2,040.99', '$1,916.49', '$759.01', '$200.00', '$1,615.50', '$300.99', '$1,184.50', '$680.00']) assert.ok(tot.includes(s), 'Totales contiene ' + s);
 await shot('04-totales-mes');
+// fin de mes: el sobrante del presupuesto pasa a ahorros sin cambiar el saldo
+await page.getByRole('button', { name: /Pasar sobrante/ }).click();
+await dlg().getByRole('button', { name: 'Pasar a Ahorros' }).click();
+await page.waitForTimeout(200);
+assert.equal(await strip('Gastos'), '$1,916.49');
+assert.equal(await strip('Ahorro'), '$324.50');
+assert.equal(await strip('Saldo'), '$759.01');
+await page.getByText('Presupuestos cerrados').waitFor();
 
 // 7. Exportaciones del mes
 const dl = async (name) => {
@@ -148,7 +156,7 @@ await r2.fill('1100'); await r2.press('Enter');
 await page.getByLabel('Pagado: Renta').check({ force: true });
 await page.getByRole('button', { name: 'Mes anterior' }).click();
 assert.equal(await page.getByLabel('Importe de Renta').inputValue(), '1000.00', 'el mes anterior no cambia');
-assert.equal(await strip('Gasto real'), '$1,916.49');
+assert.equal(await strip('Gastos'), '$1,916.49');
 
 // 9. Totales anuales
 await page.getByRole('button', { name: 'Totales', exact: true }).click();
@@ -172,7 +180,7 @@ await shot('07-bloqueo');
 await page.getByLabel('Contraseña').fill(PASS);
 await page.getByRole('button', { name: 'Desbloquear' }).click();
 await page.locator('.tabbar').waitFor();
-assert.equal(await strip('Gasto real'), '$1,916.49', 'los datos persisten tras recargar');
+assert.equal(await strip('Gastos'), '$1,916.49', 'los datos persisten tras recargar');
 await page.getByRole('button', { name: 'Bloquear' }).click();
 await page.getByRole('button', { name: 'Desbloquear' }).waitFor();
 const stored = await page.evaluate(() => new Promise((res) => {
@@ -196,7 +204,7 @@ await chooser.setFiles(backup);
 await p2.locator('dialog[open]').getByLabel('Contraseña de la copia').fill(PASS);
 await p2.locator('dialog[open]').getByRole('button', { name: 'Abrir copia' }).click();
 await p2.locator('.tabbar').waitFor();
-assert.equal((await p2.locator('.strip-cell', { hasText: 'Gasto real' }).locator('b').textContent()).trim(), '$1,916.49', 'restaurado en el otro dispositivo');
+assert.equal((await p2.locator('.strip-cell', { hasText: 'Gastos' }).locator('b').textContent()).trim(), '$1,916.49', 'restaurado en el otro dispositivo');
 await p2.screenshot({ path: OUT + '09-restaurado-android.png', fullPage: true });
 
 // 12. Tema claro

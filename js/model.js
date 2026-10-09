@@ -108,6 +108,7 @@ export function buildMonth(state, key) {
     baby: state.templates.baby.map((t) => carry(t, prev && prev.baby)),
     general: [],
     savings: (state.templates.savings || []).map((t) => carry(t, prev && prev.savings)),
+    budgetsClosed: false,
   };
 }
 
@@ -158,6 +159,7 @@ function normItem(i) {
     id: id(i.id), tpl: tplId(i.tpl), name: str(i.name, 80), mode: mode(i.mode),
     amount: cents(i.amount), paid: bool(i.paid), budget: cents(i.budget),
     date: date(i.date), notes: str(i.notes, 500), tx: arr(i.tx).map(normTx),
+    src: i.src === 'leftover' ? 'leftover' : '',
   };
 }
 function normIncome(i) {
@@ -199,6 +201,7 @@ export function normalizeState(raw) {
       baby: arr(m.baby).map(normItem),
       general: arr(m.general).map(normItem),
       savings: arr(m.savings).map(normItem),
+      budgetsClosed: bool(m.budgetsClosed),
     };
   }
   return s;

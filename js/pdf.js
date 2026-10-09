@@ -78,8 +78,9 @@ export async function buildPdf(state, keys) {
         ['Pagado', money(c.paid)],
         ['Pendiente de pago', money(c.pending)],
         ['Ingresos - gasto real', money(c.spendBalance)],
+        ['Presupuesto por gastar (ya reservado)', money(c.reserved)],
         ['Ahorro del mes', money(c.savings)],
-        ['Saldo libre (ingresos - gastos - ahorro)', money(c.balance)],
+        ['Saldo libre (ingresos - gastos - presupuesto reservado - ahorro)', money(c.balance)],
         ['Disponible tras pagos y ahorro apartado', money(c.cashNow)],
         ['Presupuestos asignados', money(c.budget)],
         ['Gastado en partidas con presupuesto', money(c.budgetReal)],
@@ -146,8 +147,9 @@ export async function buildPdf(state, keys) {
         ['Gasto real total', money(t.real), money(a.real)],
         ['Pagado', money(t.paid), money(a.paid)],
         ['Pendiente de pago', money(t.pending), money(a.pending)],
+        ['Presupuesto por gastar (reservado)', money(t.reserved), money(a.reserved)],
         ['Ahorro', money(t.savings), money(a.savings)],
-        ['Saldo libre (ingresos - gastos - ahorro)', money(t.balance), money(a.balance)],
+        ['Saldo libre (ingresos - gastos - reservado - ahorro)', money(t.balance), money(a.balance)],
         ['Presupuestos asignados', money(t.budget), ''],
         ['Gastado en partidas con presupuesto', money(t.budgetReal), ''],
       ],
@@ -204,7 +206,7 @@ export async function buildPdf(state, keys) {
 
   doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...C.muted);
   if (y > doc.internal.pageSize.getHeight() - 60) { doc.addPage(); y = 44; }
-  doc.text(doc.splitTextToSize('Los presupuestos no se cuentan como gasto. En partidas con desglose, el gasto real es la suma de sus transacciones. El ahorro se resta aparte.', pageW - 2 * M), M, y);
+  doc.text(doc.splitTextToSize('Los presupuestos no se cuentan como gasto. En partidas con desglose, el gasto real es la suma de sus transacciones. El saldo libre resta el presupuesto completo (lo no gastado queda reservado hasta pasarlo a Ahorros) y el ahorro.', pageW - 2 * M), M, y);
 
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {

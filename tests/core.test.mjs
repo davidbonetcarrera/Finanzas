@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseAmount, fmt } from '../js/money.js';
 import { newState, newItem, newTx, newIncome, ensureMonth, viewMonth, buildMonth, normalizeState, FIXED_SEED } from '../js/model.js';
-import { itemCalc, categoryCalc, monthCalc, periodCalc } from '../js/calc.js';
+import { itemCalc, categoryCalc, monthCalc, periodCalc, closeBudgets, reopenBudgets } from '../js/calc.js';
 import { createSession, seal, open } from '../js/crypto.js';
 import { workbookSheets } from '../js/reports.js';
 import { buildXlsx, crc32 } from '../js/xlsx.js';
@@ -48,9 +48,11 @@ test('presupuesto $600 con compras $475.50: gasto real $475.50, no se suma el pr
   assert.equal(c.remaining, 12450);
   assert.equal(c.over, 0);
   const mc = monthCalc(m);
-  assert.equal(mc.real, 47550, 'el total del mes no incluye el presupuesto');
+  assert.equal(mc.real, 47550, 'el gasto real no incluye el presupuesto');
   assert.equal(mc.cats.fixed.budget, 60000);
-  assert.equal(mc.balance, -47550);
+  assert.equal(mc.reserved, 12450, 'lo que queda del presupuesto se reserva');
+  assert.equal(mc.committed, 60000, 'se resta el presupuesto completo, sin duplicar');
+  assert.equal(mc.balance, -60000);
   // exceso
   sup.tx.push(newTx({ amount: 15000 }));
   c = itemCalc(sup);
@@ -71,10 +73,21 @@ test('ejemplo del enunciado: ingresos 3000, gastos 2000, pagado 1200', () => {
   assert.equal(c.real, 200000);
   assert.equal(c.paid, 120000);
   assert.equal(c.pending, 80000);
-  assert.equal(c.balance, 100000);
+  assert.equal(c.spendBalance, 100000, 'ingresos − gastos reales');
   assert.equal(c.cashNow, 180000);
   assert.equal(c.unspent, 40000, 'presupuesto sin gastar de Super');
-  assert.equal(c.projected, 60000, 'proyección separada del saldo');
+  assert.equal(c.balance, 60000, 'el saldo libre ya resta el presupuesto del súper ($900)');
+  // fin de mes: el sobrante pasa a ahorros sin restarse dos veces
+  assert.equal(closeBudgets(m, newItem), 40000);
+  const c2 = monthCalc(m);
+  assert.equal(c2.reserved, 0);
+  assert.equal(c2.savings, 40000);
+  assert.equal(c2.real, 200000);
+  assert.equal(c2.balance, 60000, 'el saldo no cambia al pasar el sobrante a ahorros');
+  assert.equal(closeBudgets(m, newItem), 0, 'no se puede cerrar dos veces');
+  reopenBudgets(m);
+  assert.equal(monthCalc(m).savings, 0);
+  assert.equal(monthCalc(m).balance, 60000);
 });
 
 test('gastos directos: importe y estado de pago', () => {
@@ -183,7 +196,9 @@ test('resumen anual: promedios sólo con meses con datos, presupuestos aparte', 
   assert.equal(p.totals.real, 310000);
   assert.equal(p.totals.paid, 140000);
   assert.equal(p.totals.pending, 170000);
-  assert.equal(p.totals.balance, 290000);
+  assert.equal(p.totals.spendBalance, 290000);
+  assert.equal(p.totals.reserved, 20000, 'febrero aún reserva $200 del súper');
+  assert.equal(p.totals.balance, 270000);
   assert.equal(p.avg.real, 155000);
   assert.equal(p.avg.fixed, 155000);
   assert.equal(p.totals.budget, 120000);
