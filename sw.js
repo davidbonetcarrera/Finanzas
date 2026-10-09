@@ -1,6 +1,6 @@
 // Service worker: guarda la app en caché para abrirla sin conexión.
 // No toca los datos (están cifrados en IndexedDB) ni hace peticiones externas.
-const VERSION = 'finanzas-v1.0.0';
+const VERSION = 'finanzas-v1.1.0';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/calc.js', 'js/charts.js', 'js/crypto.js', 'js/dom.js', 'js/model.js', 'js/money.js',

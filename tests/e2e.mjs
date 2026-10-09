@@ -108,12 +108,21 @@ await fill('Nombre', 'Cena'); await fill('Importe real', '50'); await submit('A�
 assert.equal(await strip('Gasto real'), '$1,916.49');
 assert.equal(await strip('Pendiente'), '$300.99');
 assert.equal(await strip('Saldo'), '$1,083.51');
+
+// 6b. Ahorros: aparte de los gastos, se restan del saldo libre
+await page.getByRole('button', { name: '+ Añadir ahorro' }).click();
+await fill('Nombre', 'Fondo emergencia'); await fill('Importe del mes', '200'); await dlg().getByText('Ya está apartado').click();
+await submit('Añadir');
+assert.equal(await strip('Gasto real'), '$1,916.49', 'el ahorro no es gasto');
+assert.equal(await strip('Ahorro'), '$200.00');
+assert.equal(await strip('Saldo'), '$883.51');
+assert.match(await page.locator('.cat-savings').textContent(), /OK apartado/);
 await page.locator('.cat-fixed .cat-head').scrollIntoViewIfNeeded();
 await shot('03-gastos');
 
 await page.getByRole('button', { name: 'Totales', exact: true }).click();
 const tot = await page.locator('.view').textContent();
-for (const s of ['$3,000.00', '$1,916.49', '$1,083.51', '$1,615.50', '$300.99', '$1,384.50', '$680.00']) assert.ok(tot.includes(s), 'Totales contiene ' + s);
+for (const s of ['$3,000.00', '$1,916.49', '$1,083.51', '$883.51', '$200.00', '$1,615.50', '$300.99', '$1,184.50', '$680.00']) assert.ok(tot.includes(s), 'Totales contiene ' + s);
 await shot('04-totales-mes');
 
 // 7. Exportaciones del mes

@@ -56,13 +56,18 @@ export function monthCalc(month) {
   const budgetReal = cats.fixed.budgetReal + cats.baby.budgetReal + cats.general.budgetReal;
   const unspent = cats.fixed.unspent + cats.baby.unspent + cats.general.unspent;
   const over = cats.fixed.over + cats.baby.over + cats.general.over;
+  // Ahorros: no son gasto; se restan aparte. "Apartado" = ya transferido/guardado.
+  const sv = categoryCalc(month && month.savings ? month.savings : []);
+  const savings = sv.real, savingsDone = sv.paid, savingsPending = sv.pending;
   return {
     income, cats, real, paid, pending,
-    balance: income - real,          // saldo del mes (ingresos − gastos reales)
-    cashNow: income - paid,          // dinero que queda tras lo ya pagado
+    savings, savingsDone, savingsPending, savingsCat: sv,
+    spendBalance: income - real,               // ingresos − gastos reales
+    balance: income - real - savings,          // saldo libre (ingresos − gastos reales − ahorro)
+    cashNow: income - paid - savingsDone,      // dinero que queda tras lo ya pagado y apartado
     budget, budgetReal, budgetRemaining: budget - budgetReal, unspent, over,
-    projected: income - real - unspent, // estimación si se agota el presupuesto restante
-    hasData: income !== 0 || real !== 0,
+    projected: income - real - savings - unspent, // estimación si se agota el presupuesto restante
+    hasData: income !== 0 || real !== 0 || savings !== 0,
   };
 }
 
@@ -74,15 +79,16 @@ export function periodCalc(state, keys) {
   const months = sorted.map((key) => ({ key, ...monthCalc(state.months[key] || null) }));
   const withData = months.filter((m) => m.hasData);
   const n = withData.length;
-  const tot = { income: 0, real: 0, paid: 0, pending: 0, balance: 0, budget: 0, budgetReal: 0, unspent: 0, over: 0, fixed: 0, baby: 0, general: 0 };
+  const tot = { income: 0, real: 0, paid: 0, pending: 0, balance: 0, savings: 0, savingsDone: 0, spendBalance: 0, budget: 0, budgetReal: 0, unspent: 0, over: 0, fixed: 0, baby: 0, general: 0 };
   for (const m of months) {
     tot.income += m.income; tot.real += m.real; tot.paid += m.paid; tot.pending += m.pending;
-    tot.balance += m.balance; tot.budget += m.budget; tot.budgetReal += m.budgetReal;
+    tot.balance += m.balance; tot.savings += m.savings; tot.savingsDone += m.savingsDone; tot.spendBalance += m.spendBalance;
+    tot.budget += m.budget; tot.budgetReal += m.budgetReal;
     tot.unspent += m.unspent; tot.over += m.over;
     for (const { key } of CATS) tot[key] += m.cats[key].real;
   }
   const avg = {};
-  for (const k of ['income', 'real', 'paid', 'pending', 'balance', 'fixed', 'baby', 'general']) {
+  for (const k of ['income', 'real', 'paid', 'pending', 'balance', 'savings', 'fixed', 'baby', 'general']) {
     avg[k] = n ? Math.round(tot[k] / n) : 0;
   }
 

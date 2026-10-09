@@ -227,7 +227,42 @@ test('Excel: estructura y CRC válidos', () => {
   byName(m, 'fixed', 'Super').budget = 60000;
   byName(m, 'fixed', 'Super').tx.push(newTx({ amount: 47550, desc: 'Compra <semanal> & "más"' }));
   const sheets = workbookSheets(s, ['2026-10']);
-  assert.deepEqual(sheets.map((x) => x.name), ['Resumen', 'Ingresos', 'Gastos', 'Transacciones', 'Presupuesto vs real', 'Por partida']);
+  assert.deepEqual(sheets.map((x) => x.name), ['Resumen', 'Ingresos', 'Gastos', 'Ahorros', 'Transacciones', 'Presupuesto vs real', 'Por partida']);
   const bytes = buildXlsx(sheets);
   assert.equal(bytes[0], 0x50); assert.equal(bytes[1], 0x4B);
+});
+
+test('ahorros: no son gasto, se restan aparte del saldo', () => {
+  const s = newState();
+  const m = ensureMonth(s, '2026-10');
+  m.incomes.push(newIncome({ amount: 300000 }));
+  byName(m, 'fixed', 'Renta').amount = 100000; byName(m, 'fixed', 'Renta').paid = true;
+  m.savings.push(newItem({ name: 'Fondo de emergencia', amount: 30000, paid: true }));
+  m.savings.push(Object.assign(newItem({ name: 'Vacaciones', mode: 'tx', budget: 20000 }), { tx: [newTx({ amount: 5000, paid: true }), newTx({ amount: 5000 })] }));
+  const c = monthCalc(m);
+  assert.equal(c.real, 100000, 'el ahorro no cuenta como gasto');
+  assert.equal(c.pending, 0, 'el ahorro no es un pago pendiente');
+  assert.equal(c.savings, 40000);
+  assert.equal(c.savingsDone, 35000);
+  assert.equal(c.savingsPending, 5000);
+  assert.equal(c.spendBalance, 200000);
+  assert.equal(c.balance, 160000, 'saldo libre = ingresos − gastos − ahorro');
+  assert.equal(c.cashNow, 300000 - 100000 - 35000);
+  assert.equal(c.budget, 0, 'la meta de ahorro no es presupuesto de gasto');
+  // recurrente: se arrastra al mes siguiente sin el estado
+  s.templates.savings.push({ id: 'sv1', name: 'Fondo', mode: 'direct', amount: 30000, budget: 0 });
+  m.savings[0].tpl = 'sv1';
+  const nov = ensureMonth(s, '2026-11');
+  assert.equal(nov.savings.length, 1);
+  assert.equal(nov.savings[0].amount, 30000);
+  assert.equal(nov.savings[0].paid, false);
+  const p = periodCalc(s, ['2026-10', '2026-11']);
+  assert.equal(p.totals.savings, 70000);
+  assert.equal(p.totals.real, 100000 + 100000, 'renta arrastrada');
+  // datos antiguos sin ahorros siguen cargando
+  const raw = JSON.parse(JSON.stringify(s));
+  delete raw.templates.savings; delete raw.months['2026-10'].savings;
+  const n = normalizeState(raw);
+  assert.deepEqual(n.months['2026-10'].savings, []);
+  assert.deepEqual(n.templates.savings, []);
 });

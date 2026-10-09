@@ -77,8 +77,10 @@ export async function buildPdf(state, keys) {
         ['Gasto real total', money(c.real)],
         ['Pagado', money(c.paid)],
         ['Pendiente de pago', money(c.pending)],
-        ['Saldo del mes (ingresos - gasto real)', money(c.balance)],
-        ['Disponible tras pagos (ingresos - pagado)', money(c.cashNow)],
+        ['Ingresos - gasto real', money(c.spendBalance)],
+        ['Ahorro del mes', money(c.savings)],
+        ['Saldo libre (ingresos - gastos - ahorro)', money(c.balance)],
+        ['Disponible tras pagos y ahorro apartado', money(c.cashNow)],
         ['Presupuestos asignados', money(c.budget)],
         ['Gastado en partidas con presupuesto', money(c.budgetReal)],
         ['Presupuesto restante (- = exceso)', money(c.budgetRemaining)],
@@ -117,6 +119,19 @@ export async function buildPdf(state, keys) {
         table({ head: [['Partida', 'Fecha', 'Descripción', 'Importe', 'Pagado']], body: txRows, columnStyles: right([3]), headStyles: { fillColor: C.olive, textColor: [255, 255, 255] } });
       }
     }
+
+    const sv = m.savings;
+    section(`Ahorros · ${money(sv.calc.real)} (no es gasto; se resta aparte)`);
+    table({
+      head: [['Partida', 'Tipo', 'Meta', 'Ahorro', 'Apartado', 'Por apartar', 'Estado']],
+      body: sv.items.length ? sv.items.map((it) => [
+        it.name, it.mode === 'tx' ? `Desglose (${it.calc.count})` : 'Directo', it.calc.hasBudget ? money(it.calc.budget) : '—',
+        money(it.calc.real), money(it.calc.paid), money(it.calc.pending), it.status,
+      ]) : [['Sin ahorros registrados', '', '', '', '', '', '']],
+      foot: [['Total', '', '', money(sv.calc.real), money(sv.calc.paid), money(sv.calc.pending), '']],
+      columnStyles: right([2, 3, 4, 5]),
+      headStyles: { fillColor: [150, 118, 64], textColor: [255, 255, 255] },
+    });
   } else {
     const t = r.period.totals;
     const a = r.period.avg;
@@ -131,7 +146,8 @@ export async function buildPdf(state, keys) {
         ['Gasto real total', money(t.real), money(a.real)],
         ['Pagado', money(t.paid), money(a.paid)],
         ['Pendiente de pago', money(t.pending), money(a.pending)],
-        ['Saldo (ingresos - gasto real)', money(t.balance), money(a.balance)],
+        ['Ahorro', money(t.savings), money(a.savings)],
+        ['Saldo libre (ingresos - gastos - ahorro)', money(t.balance), money(a.balance)],
         ['Presupuestos asignados', money(t.budget), ''],
         ['Gastado en partidas con presupuesto', money(t.budgetReal), ''],
       ],
@@ -161,12 +177,12 @@ export async function buildPdf(state, keys) {
 
     section('Comparación mensual');
     table({
-      head: [['Mes', 'Ingresos', 'Fijos', 'Bebé', 'Generales', 'Gasto real', 'Pagado', 'Pendiente', 'Saldo']],
-      body: r.months.map((m) => [m.label, money(m.calc.income), money(m.calc.cats.fixed.real), money(m.calc.cats.baby.real), money(m.calc.cats.general.real), money(m.calc.real), money(m.calc.paid), money(m.calc.pending), money(m.calc.balance)]),
-      foot: [['Total', money(t.income), money(t.fixed), money(t.baby), money(t.general), money(t.real), money(t.paid), money(t.pending), money(t.balance)]],
-      columnStyles: right([1, 2, 3, 4, 5, 6, 7, 8]),
-      styles: { ...base.styles, fontSize: 7.5, cellPadding: 3 },
-      didParseCell: (d) => { if (d.section === 'body' && d.column.index === 8 && String(d.cell.raw).startsWith('-')) d.cell.styles.textColor = C.red; },
+      head: [['Mes', 'Ingresos', 'Fijos', 'Bebé', 'Generales', 'Gasto real', 'Pagado', 'Pendiente', 'Ahorro', 'Saldo libre']],
+      body: r.months.map((m) => [m.label, money(m.calc.income), money(m.calc.cats.fixed.real), money(m.calc.cats.baby.real), money(m.calc.cats.general.real), money(m.calc.real), money(m.calc.paid), money(m.calc.pending), money(m.calc.savings), money(m.calc.balance)]),
+      foot: [['Total', money(t.income), money(t.fixed), money(t.baby), money(t.general), money(t.real), money(t.paid), money(t.pending), money(t.savings), money(t.balance)]],
+      columnStyles: right([1, 2, 3, 4, 5, 6, 7, 8, 9]),
+      styles: { ...base.styles, fontSize: 7, cellPadding: 2.5 },
+      didParseCell: (d) => { if (d.section === 'body' && d.column.index === 9 && String(d.cell.raw).startsWith('-')) d.cell.styles.textColor = C.red; },
     });
 
     section('Presupuesto frente a gasto real');
@@ -188,7 +204,7 @@ export async function buildPdf(state, keys) {
 
   doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...C.muted);
   if (y > doc.internal.pageSize.getHeight() - 60) { doc.addPage(); y = 44; }
-  doc.text('Los presupuestos no se cuentan como gasto. En partidas con desglose, el gasto real es la suma de sus transacciones.', M, y);
+  doc.text(doc.splitTextToSize('Los presupuestos no se cuentan como gasto. En partidas con desglose, el gasto real es la suma de sus transacciones. El ahorro se resta aparte.', pageW - 2 * M), M, y);
 
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {

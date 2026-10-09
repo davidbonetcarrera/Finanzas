@@ -10,6 +10,9 @@ export const CATS = [
   { key: 'general', label: 'Gastos generales' },
 ];
 
+// Ahorros: sección aparte. No es gasto, pero se resta del saldo del mes.
+export const SAVINGS = { key: 'savings', label: 'Ahorros' };
+
 export const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
@@ -34,6 +37,7 @@ export function newState() {
       income: [],
       fixed: FIXED_SEED.map(([name, mode], i) => ({ id: 'fx' + (i + 1), name, mode, amount: 0, budget: 0 })),
       baby: [],
+      savings: [],
     },
     months: {},
   };
@@ -103,6 +107,7 @@ export function buildMonth(state, key) {
     fixed: state.templates.fixed.map((t) => carry(t, prev && prev.fixed)),
     baby: state.templates.baby.map((t) => carry(t, prev && prev.baby)),
     general: [],
+    savings: (state.templates.savings || []).map((t) => carry(t, prev && prev.savings)),
   };
 }
 
@@ -181,6 +186,7 @@ export function normalizeState(raw) {
   s.templates.income = arr(raw.templates.income, 200).map((t) => normTpl(t, false));
   s.templates.fixed = arr(raw.templates.fixed, 200).map((t) => normTpl(t));
   s.templates.baby = arr(raw.templates.baby, 200).map((t) => normTpl(t));
+  s.templates.savings = arr(raw.templates.savings, 200).map((t) => normTpl(t));
   s.months = Object.create(null);
   for (const k of Object.keys(raw.months)) {
     if (!isValidKey(k)) continue;
@@ -192,6 +198,7 @@ export function normalizeState(raw) {
       fixed: arr(m.fixed).map(normItem),
       baby: arr(m.baby).map(normItem),
       general: arr(m.general).map(normItem),
+      savings: arr(m.savings).map(normItem),
     };
   }
   return s;

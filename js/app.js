@@ -2,7 +2,7 @@
 import { h, formSheet, choose, confirmDanger, infoSheet, toast, saveFile, pickFile, todayISO, shortDate } from './dom.js';
 import { fmt, toInput, parseAmount } from './money.js';
 import {
-  CATS, MONTH_NAMES, newState, monthKey, parseKey, shiftKey, keyLabel, yearKeys, newItem, newTx, newIncome,
+  CATS, SAVINGS, MONTH_NAMES, newState, monthKey, parseKey, shiftKey, keyLabel, yearKeys, newItem, newTx, newIncome,
   viewMonth, ensureMonth, latestBefore, normalizeState, uid,
 } from './model.js';
 import { itemCalc, monthCalc, periodCalc } from './calc.js';
@@ -21,7 +21,7 @@ const app = {
   key: monthKey(now.getFullYear(), now.getMonth() + 1),
   tab: 'gastos',
   virtual: new Map(),
-  open: new Set(['fixed', 'baby', 'general']),
+  open: new Set(['fixed', 'baby', 'general', 'savings']),
   totalsMode: 'month',
   totalsYear: now.getFullYear(),
   range: new Set(),
@@ -140,6 +140,7 @@ function shell() {
       stripCell('Ingresos', c.income, ''),
       stripCell('Gasto real', c.real, ''),
       stripCell('Pendiente', c.pending, c.pending > 0 ? 'warn' : ''),
+      stripCell('Ahorro', c.savings, 'sav'),
       stripCell('Saldo', c.balance, c.balance < 0 ? 'neg' : 'pos'),
     ),
     h('main', { class: 'view' }, viewFor(m, c)),
@@ -183,7 +184,7 @@ function newMonthBanner() {
       ? `Mes nuevo: se han copiado los importes y presupuestos habituales de ${keyLabel(prev.key)} (sin pagos ni transacciones). No se guarda nada hasta que hagas un cambio.`
       : 'Mes nuevo creado a partir de tu plantilla. No se guarda nada hasta que hagas un cambio.'),
     carried ? h('button', { class: 'btn small ghost', onclick: () => mutate((mm) => {
-      for (const cat of ['fixed', 'baby']) for (const it of mm[cat]) { it.amount = 0; it.budget = 0; }
+      for (const cat of ['fixed', 'baby', 'savings']) for (const it of mm[cat]) { it.amount = 0; it.budget = 0; }
       for (const i of mm.incomes) i.amount = 0;
       toast('Importes del mes en blanco');
     }) }, 'Empezar con importes en blanco') : null,
@@ -259,6 +260,7 @@ function viewExpenses(m) {
   return h('div', { class: 'stack' },
     newMonthBanner(),
     CATS.map(({ key, label }) => categorySection(m, key, label)),
+    categorySection(m, SAVINGS.key, SAVINGS.label),
   );
 }
 
@@ -267,16 +269,19 @@ function categorySection(m, cat, label) {
   const isOpen = app.open.has(cat);
   let real = 0, pending = 0, budget = 0;
   for (const it of items) { const c = itemCalc(it); real += c.real; pending += c.pending; if (c.hasBudget) budget += c.budget; }
-  const addLabel = cat === 'fixed' ? '+ Añadir gasto fijo' : cat === 'baby' ? '+ Añadir partida del bebé' : '+ Añadir gasto';
+  const isSav = cat === 'savings';
+  const addLabel = cat === 'fixed' ? '+ Añadir gasto fijo' : cat === 'baby' ? '+ Añadir partida del bebé' : isSav ? '+ Añadir ahorro' : '+ Añadir gasto';
   return h('section', { class: 'card cat cat-' + cat + (isOpen ? ' open' : '') },
     h('button', { class: 'cat-head', 'aria-expanded': String(isOpen), onclick: () => { isOpen ? app.open.delete(cat) : app.open.add(cat); render(); } },
       h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
       h('span', { class: 'cat-title' }, label, h('small', null,
-        [`${items.length} partida${items.length === 1 ? '' : 's'}`, budget ? `presup. ${fmt(budget)}` : null, pending ? `pend. ${fmt(pending)}` : null].filter(Boolean).join(' · '))),
+        (isSav
+          ? ['No es gasto: se resta aparte del saldo', pending ? `por apartar ${fmt(pending)}` : null]
+          : [`${items.length} partida${items.length === 1 ? '' : 's'}`, budget ? `presup. ${fmt(budget)}` : null, pending ? `pend. ${fmt(pending)}` : null]).filter(Boolean).join(' · '))),
       h('b', { class: 'cat-total' }, fmt(real)),
     ),
     isOpen ? h('div', { class: 'cat-body' },
-      items.length === 0 ? h('p', { class: 'empty' }, cat === 'baby' ? 'Sin partidas. Crea una (p. ej. «Pañales» con presupuesto, o una compra puntual).' : 'Sin gastos este mes.') : null,
+      items.length === 0 ? h('p', { class: 'empty' }, cat === 'baby' ? 'Sin partidas. Crea una (p. ej. «Pañales» con presupuesto, o una compra puntual).' : isSav ? 'Sin ahorros este mes. Añade lo que quieras apartar (p. ej. «Fondo de emergencia»).' : 'Sin gastos este mes.') : null,
       h('ul', { class: 'items' }, items.map((it) => (it.mode === 'tx' ? txItem(cat, it) : directItem(cat, it)))),
       h('button', { class: 'btn add', onclick: () => addItem(cat) }, addLabel),
     ) : null,
@@ -295,7 +300,7 @@ function directItem(cat, it) {
     paidCheck(it.paid, (val) => mutate((mm) => { const x = mm[cat].find((i) => i.id === it.id); if (x) x.paid = val; }), `Pagado: ${it.name}`, 'p-' + it.id),
     h('button', { class: 'item-name', onclick: () => editItem(cat, it) },
       h('span', null, it.name || 'Sin nombre'),
-      h('small', null, it.paid ? h('span', { class: 'ok' }, '✓ OK pagado') : (c.real ? 'pendiente' : 'sin importe'), it.date ? ' · ' + shortDate(it.date) : '')),
+      h('small', null, it.paid ? h('span', { class: 'ok' }, cat === 'savings' ? '✓ OK apartado' : '✓ OK pagado') : (c.real ? (cat === 'savings' ? 'por apartar' : 'pendiente') : 'sin importe'), it.date ? ' · ' + shortDate(it.date) : '')),
     h('input', {
       class: 'amt', type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '0.00', value: toInput(it.amount),
       'aria-label': `Importe de ${it.name}`, 'data-fk': 'a-' + it.id, enterkeyhint: 'done',
@@ -314,8 +319,11 @@ function txItem(cat, it) {
   const k = 'tx-' + it.id;
   const isOpen = app.open.has(k);
   const pct = c.hasBudget ? Math.min(100, (c.real / c.budget) * 100) : 0;
+  const sav = cat === 'savings';
   const status = c.hasBudget
-    ? (c.remaining >= 0 ? h('span', null, 'Quedan ', h('b', null, fmt(c.remaining))) : h('span', { class: 'neg' }, 'Excedido por ', h('b', null, fmt(-c.remaining))))
+    ? (sav
+      ? (c.remaining > 0 ? h('span', null, 'Faltan ', h('b', null, fmt(c.remaining)), ' para la meta') : h('span', { class: 'pos' }, '✓ Meta cumplida', c.remaining < 0 ? ` (+${fmt(-c.remaining)})` : ''))
+      : (c.remaining >= 0 ? h('span', null, 'Quedan ', h('b', null, fmt(c.remaining))) : h('span', { class: 'neg' }, 'Excedido por ', h('b', null, fmt(-c.remaining)))))
     : h('span', { class: 'muted' }, 'Sin presupuesto');
   return h('li', { class: 'item tx' + (isOpen ? ' open' : '') + (c.over ? ' over' : '') },
     h('button', { class: 'tx-head', 'aria-expanded': String(isOpen), onclick: () => { isOpen ? app.open.delete(k) : app.open.add(k); render(); } },
@@ -328,7 +336,7 @@ function txItem(cat, it) {
     c.hasBudget ? h('div', { class: 'bar' + (c.over ? ' over' : '') }, h('i', { style: { width: pct + '%' } })) : null,
     h('div', { class: 'tx-status' }, status),
     isOpen ? h('div', { class: 'tx-body' },
-      h('label', { class: 'budget-row' }, h('span', null, 'Presupuesto mensual'),
+      h('label', { class: 'budget-row' }, h('span', null, sav ? 'Meta mensual (opcional)' : 'Presupuesto mensual'),
         h('input', {
           class: 'amt', type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '0.00', value: toInput(it.budget),
           'data-fk': 'b-' + it.id, enterkeyhint: 'done', 'aria-label': `Presupuesto de ${it.name}`,
@@ -384,16 +392,17 @@ async function editTx(cat, it, t) {
 
 async function addItem(cat) {
   const isGeneral = cat === 'general';
+  const isSav = cat === 'savings';
   const v = await formSheet({
-    title: cat === 'fixed' ? 'Nuevo gasto fijo' : cat === 'baby' ? 'Nueva partida del bebé' : 'Nuevo gasto general',
+    title: cat === 'fixed' ? 'Nuevo gasto fijo' : cat === 'baby' ? 'Nueva partida del bebé' : isSav ? 'Nuevo ahorro' : 'Nuevo gasto general',
     fields: [
-      { name: 'name', label: 'Nombre', type: 'text', required: true, autofocus: true, placeholder: cat === 'baby' ? 'Pañales, pediatra, cuna…' : isGeneral ? 'Cena, ropa, regalo…' : 'Gimnasio, agua…' },
-      { name: 'mode', label: 'Tipo', type: 'select', value: 'direct', options: [['direct', 'Importe directo (un solo importe)'], ['tx', 'Presupuesto + transacciones']] },
+      { name: 'name', label: 'Nombre', type: 'text', required: true, autofocus: true, placeholder: cat === 'baby' ? 'Pañales, pediatra, cuna…' : isSav ? 'Fondo de emergencia, vacaciones…' : isGeneral ? 'Cena, ropa, regalo…' : 'Gimnasio, agua…' },
+      { name: 'mode', label: 'Tipo', type: 'select', value: 'direct', options: [['direct', 'Importe directo (un solo importe)'], ['tx', isSav ? 'Meta + aportaciones' : 'Presupuesto + transacciones']] },
       { name: 'amount', label: isGeneral ? 'Importe real' : 'Importe del mes', type: 'amount', value: 0, show: (x) => x.mode !== 'tx' },
-      { name: 'paid', label: 'Ya está pagado', type: 'checkbox', value: false, show: (x) => x.mode !== 'tx' },
-      { name: 'budget', label: 'Presupuesto mensual (opcional)', type: 'amount', value: 0, show: (x) => x.mode === 'tx', hint: 'Es una reserva, no un gasto. El gasto real será la suma de las transacciones.' },
+      { name: 'paid', label: isSav ? 'Ya está apartado' : 'Ya está pagado', type: 'checkbox', value: false, show: (x) => x.mode !== 'tx' },
+      { name: 'budget', label: isSav ? 'Meta mensual (opcional)' : 'Presupuesto mensual (opcional)', type: 'amount', value: 0, show: (x) => x.mode === 'tx', hint: isSav ? 'El ahorro del mes será la suma de las aportaciones.' : 'Es una reserva, no un gasto. El gasto real será la suma de las transacciones.' },
       isGeneral ? { name: 'date', label: 'Fecha (opcional)', type: 'date', value: defaultDate(), show: (x) => x.mode !== 'tx' } : null,
-      !isGeneral ? { name: 'recurring', label: 'Repetir en los próximos meses', type: 'checkbox', value: cat === 'fixed', hint: 'Sólo afecta a los meses que se creen a partir de ahora.' } : null,
+      !isGeneral ? { name: 'recurring', label: 'Repetir en los próximos meses', type: 'checkbox', value: cat === 'fixed' || cat === 'savings', hint: 'Sólo afecta a los meses que se creen a partir de ahora.' } : null,
     ].filter(Boolean),
     submitLabel: 'Añadir',
   });
@@ -419,8 +428,8 @@ async function editItem(cat, it) {
       { name: 'name', label: 'Nombre', type: 'text', value: it.name, required: true },
       { name: 'mode', label: 'Tipo', type: 'select', value: it.mode, options: [['direct', 'Importe directo'], ['tx', 'Presupuesto + transacciones']] },
       { name: 'amount', label: 'Importe', type: 'amount', value: it.amount, show: (x) => x.mode !== 'tx' },
-      { name: 'paid', label: 'Pagado', type: 'checkbox', value: it.paid, show: (x) => x.mode !== 'tx' },
-      { name: 'budget', label: 'Presupuesto mensual', type: 'amount', value: it.budget, show: (x) => x.mode === 'tx' },
+      { name: 'paid', label: cat === 'savings' ? 'Apartado' : 'Pagado', type: 'checkbox', value: it.paid, show: (x) => x.mode !== 'tx' },
+      { name: 'budget', label: cat === 'savings' ? 'Meta mensual' : 'Presupuesto mensual', type: 'amount', value: it.budget, show: (x) => x.mode === 'tx' },
       { name: 'note1', type: 'note', label: it.tx.length ? `Tiene ${it.tx.length} transacciones. Si cambias a importe directo se conservan, pero no cuentan hasta que vuelvas a activar el desglose.` : '', show: (x) => x.mode !== 'tx' && it.tx.length > 0 },
       { name: 'date', label: 'Fecha (opcional)', type: 'date', value: it.date },
       { name: 'notes', label: 'Observaciones', type: 'textarea', value: it.notes },
@@ -485,14 +494,16 @@ function monthTotals(c) {
       h('div', { class: 'kpis' },
         kpi('Ingresos', c.income, 'pos'),
         kpi('Gastos reales', c.real),
-        kpi('Saldo del mes', c.balance, c.balance < 0 ? 'neg big' : 'pos big', 'Ingresos − gastos reales'),
-        kpi('Disponible tras pagos', c.cashNow, '', 'Ingresos − ya pagado'),
+        kpi('Ahorro', c.savings, 'sav', c.savingsPending ? `Por apartar ${fmt(c.savingsPending)}` : 'No es gasto'),
+        kpi('Saldo libre', c.balance, c.balance < 0 ? 'neg big' : 'pos big', 'Ingresos − gastos − ahorro'),
         kpi('Pagado', c.paid, 'pos'),
         kpi('Pendiente de pago', c.pending, c.pending ? 'warn' : ''),
+        kpi('Ingresos − gastos', c.spendBalance, '', 'Antes de ahorrar'),
+        kpi('Disponible tras pagos', c.cashNow, '', 'Ingresos − pagado − apartado'),
       ),
-      h('p', { class: 'explain' }, c.pending > 0
-        ? `De los ${fmt(c.cashNow)} que tienes tras los pagos realizados, ${fmt(c.pending)} ya están comprometidos en gastos pendientes. Al pagarlos te quedará el saldo del mes: ${fmt(c.balance)}.`
-        : `Todo lo registrado está pagado. Saldo del mes: ${fmt(c.balance)}.`),
+      h('p', { class: 'explain' }, (c.pending + c.savingsPending) > 0
+        ? `Hoy te quedan ${fmt(c.cashNow)} tras lo pagado${c.savings ? ' y lo ya apartado' : ''}. De eso, ${fmt(c.pending)} son pagos pendientes${c.savingsPending ? ` y ${fmt(c.savingsPending)} ahorro por apartar` : ''}. Al completarlo te quedará el saldo libre: ${fmt(c.balance)}.`
+        : `Todo está pagado${c.savings ? ' y apartado' : ''}. Saldo libre del mes: ${fmt(c.balance)}.`),
     ),
     h('section', { class: 'card' },
       h('h2', null, 'Por categoría'),
@@ -500,7 +511,9 @@ function monthTotals(c) {
         h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Real'), h('th', null, 'Pagado'), h('th', null, 'Pend.'))),
         h('tbody', null, CATS.map(({ key, label }) => h('tr', null, h('td', null, label.replace('Gastos ', '').replace(/^\w/, (x) => x.toUpperCase())),
           h('td', null, fmt(c.cats[key].real)), h('td', null, fmt(c.cats[key].paid)), h('td', null, fmt(c.cats[key].pending))))),
-        h('tfoot', null, h('tr', null, h('td', null, 'Total'), h('td', null, fmt(c.real)), h('td', null, fmt(c.paid)), h('td', null, fmt(c.pending))))),
+        h('tfoot', null, h('tr', null, h('td', null, 'Total gastos'), h('td', null, fmt(c.real)), h('td', null, fmt(c.paid)), h('td', null, fmt(c.pending))),
+          h('tr', { class: 'sav-row' }, h('td', null, 'Ahorros'), h('td', null, fmt(c.savings)), h('td', null, fmt(c.savingsDone)), h('td', null, fmt(c.savingsPending))))),
+      c.savings ? h('p', { class: 'muted small' }, 'En ahorros, «Pagado» es lo ya apartado.') : null,
     ),
     h('section', { class: 'card' },
       h('h2', null, 'Presupuestos'),
@@ -510,7 +523,7 @@ function monthTotals(c) {
           h('div', { class: 'bl-top' }, h('span', null, it.name, h('small', null, ' · ' + label.replace('Gastos ', ''))), h('span', null, fmt(ic.real), h('small', null, ' / ' + fmt(ic.budget)))),
           h('div', { class: 'bar' + (ic.over ? ' over' : '') }, h('i', { style: { width: Math.min(100, (ic.real / ic.budget) * 100) + '%' } })),
           h('small', { class: ic.remaining < 0 ? 'neg' : 'muted' }, ic.remaining >= 0 ? `Quedan ${fmt(ic.remaining)}` : `Excedido por ${fmt(-ic.remaining)}`)))),
-        c.unspent > 0 ? h('p', { class: 'explain' }, `Estimación (no es un gasto): si gastas todo el presupuesto que queda (${fmt(c.unspent)}), el saldo del mes sería ${fmt(c.projected)}.`) : null,
+        c.unspent > 0 ? h('p', { class: 'explain' }, `Estimación (no es un gasto): si gastas todo el presupuesto que queda (${fmt(c.unspent)}), el saldo libre sería ${fmt(c.projected)}.`) : null,
       ),
     ),
     exportCard([app.key], keyLabel(app.key)),
@@ -551,39 +564,40 @@ function periodTotals() {
       h('div', { class: 'kpis' },
         kpi('Ingresos', t.income, 'pos'),
         kpi('Gastos reales', t.real),
-        kpi('Saldo acumulado', t.balance, t.balance < 0 ? 'neg big' : 'pos big'),
-        kpi('Ahorro medio/mes', p.avg.balance, p.avg.balance < 0 ? 'neg' : 'pos', `${p.monthsWithData} meses con datos`),
+        kpi('Ahorro acumulado', t.savings, 'sav', `Media ${fmt(p.avg.savings)}/mes`),
+        kpi('Saldo libre acumulado', t.balance, t.balance < 0 ? 'neg big' : 'pos big', `Media ${fmt(p.avg.balance)}/mes · ${p.monthsWithData} meses con datos`),
         kpi('Pagado', t.paid, 'pos'),
         kpi('Pendiente', t.pending, t.pending ? 'warn' : ''),
       ),
     ),
     h('section', { class: 'card' },
-      h('h2', null, 'Gasto real por mes'),
+      h('h2', null, 'Gasto real y ahorro por mes'),
       stackedBars(p.months.map((mm) => ({
         label: shortLbl(mm.key), marker: mm.income,
-        parts: [{ value: mm.cats.fixed.real, cls: 'c-fixed' }, { value: mm.cats.baby.real, cls: 'c-baby' }, { value: mm.cats.general.real, cls: 'c-general' }],
+        parts: [{ value: mm.cats.fixed.real, cls: 'c-fixed' }, { value: mm.cats.baby.real, cls: 'c-baby' }, { value: mm.cats.general.real, cls: 'c-general' }, { value: mm.savings, cls: 'c-savings' }],
       }))),
-      legend([['c-fixed', 'Fijos'], ['c-baby', 'Bebé'], ['c-general', 'Generales'], ['marker', 'Ingresos']]),
+      legend([['c-fixed', 'Fijos'], ['c-baby', 'Bebé'], ['c-general', 'Generales'], ['c-savings', 'Ahorro'], ['marker', 'Ingresos']]),
     ),
     h('section', { class: 'card' },
-      h('h2', null, 'Evolución del saldo mensual'),
+      h('h2', null, 'Evolución del saldo libre mensual'),
       balanceBars(p.months.map((mm) => ({ label: shortLbl(mm.key), value: mm.balance, empty: !mm.hasData }))),
     ),
     h('section', { class: 'card' },
       h('h2', null, 'Comparación entre meses'),
       h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
-        h('thead', null, h('tr', null, ['Mes', 'Ingresos', 'Gastos', 'Pend.', 'Saldo'].map((x) => h('th', null, x)))),
+        h('thead', null, h('tr', null, ['Mes', 'Ingresos', 'Gastos', 'Ahorro', 'Saldo'].map((x) => h('th', null, x)))),
         h('tbody', null, p.months.map((mm) => h('tr', { class: mm.hasData ? '' : 'dim' },
           h('td', null, shortLbl(mm.key)), h('td', null, mm.hasData ? fmt(mm.income) : '—'), h('td', null, mm.hasData ? fmt(mm.real) : '—'),
-          h('td', null, mm.hasData ? fmt(mm.pending) : '—'), h('td', { class: mm.balance < 0 ? 'neg' : '' }, mm.hasData ? fmt(mm.balance) : '—')))),
-        h('tfoot', null, h('tr', null, h('td', null, 'Total'), h('td', null, fmt(t.income)), h('td', null, fmt(t.real)), h('td', null, fmt(t.pending)), h('td', { class: t.balance < 0 ? 'neg' : '' }, fmt(t.balance))))))),
+          h('td', null, mm.hasData ? fmt(mm.savings) : '—'), h('td', { class: mm.balance < 0 ? 'neg' : '' }, mm.hasData ? fmt(mm.balance) : '—')))),
+        h('tfoot', null, h('tr', null, h('td', null, 'Total'), h('td', null, fmt(t.income)), h('td', null, fmt(t.real)), h('td', null, fmt(t.savings)), h('td', { class: t.balance < 0 ? 'neg' : '' }, fmt(t.balance))))))),
     h('section', { class: 'card' },
       h('h2', null, 'Por categoría'),
       h('table', { class: 'tbl' },
         h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Total'), h('th', null, 'Promedio/mes'), h('th', null, '%'))),
         h('tbody', null, [['fixed', 'Fijos'], ['baby', 'Bebé'], ['general', 'Generales']].map(([k, lab]) => h('tr', null,
           h('td', null, lab), h('td', null, fmt(t[k])), h('td', null, fmt(p.avg[k])), h('td', null, t.real ? Math.round((t[k] / t.real) * 100) + '%' : '—')))),
-        h('tfoot', null, h('tr', null, h('td', null, 'Total'), h('td', null, fmt(t.real)), h('td', null, fmt(p.avg.real)), h('td', null, '')))),
+        h('tfoot', null, h('tr', null, h('td', null, 'Total gastos'), h('td', null, fmt(t.real)), h('td', null, fmt(p.avg.real)), h('td', null, '')),
+          h('tr', { class: 'sav-row' }, h('td', null, 'Ahorros'), h('td', null, fmt(t.savings)), h('td', null, fmt(p.avg.savings)), h('td', null, '')))),
       h('p', { class: 'muted small' }, `Promedios calculados sólo con los ${p.monthsWithData} meses que tienen datos reales; los presupuestos no cuentan.`),
     ),
     h('section', { class: 'card' },
@@ -705,6 +719,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Se usan al crear un mes nuevo. Cambiarlas no modifica los meses ya creados (para el mes actual, edítalo en Gastos o Ingresos).'),
       tplList('fixed', 'Gastos fijos'),
       tplList('baby', 'Gastos del bebé'),
+      tplList('savings', 'Ahorros'),
       tplList('income', 'Ingresos'),
       h('label', { class: 'form-check' },
         h('input', { type: 'checkbox', checked: st.settings.carryAmounts !== false, onchange: (e) => mutateState((s) => { s.settings.carryAmounts = e.target.checked; }) }),
@@ -725,7 +740,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.0 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.1 · funciona sin conexión'),
   );
 }
 
