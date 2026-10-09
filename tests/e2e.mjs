@@ -117,12 +117,20 @@ assert.equal(await strip('Gastos'), '$2,040.99', 'el ahorro no es gasto');
 assert.equal(await strip('Ahorro'), '$200.00');
 assert.equal(await strip('Saldo'), '$759.01');
 assert.match(await page.locator('.cat-savings').textContent(), /OK apartado/);
+
+// 6c. Reembolsos: no son gasto ni cambian el saldo
+await page.getByRole('button', { name: '+ Añadir reembolso' }).click();
+await fill('Concepto', 'Cena de trabajo'); await fill('Quién lo devuelve', 'Empresa'); await fill('Importe pagado', '80');
+await submit('Añadir');
+assert.equal(await strip('Gastos'), '$2,040.99', 'el reembolso no es gasto');
+assert.equal(await strip('Saldo'), '$759.01', 'el reembolso no cambia el saldo');
+assert.match(await page.locator('.cat-reimb').textContent(), /por cobrar \$80\.00/);
 await page.locator('.cat-fixed .cat-head').scrollIntoViewIfNeeded();
 await shot('03-gastos');
 
 await page.getByRole('button', { name: 'Totales', exact: true }).click();
 const tot = await page.locator('.view').textContent();
-for (const s of ['$3,000.00', '$2,040.99', '$1,916.49', '$759.01', '$200.00', '$1,615.50', '$300.99', '$1,184.50', '$680.00']) assert.ok(tot.includes(s), 'Totales contiene ' + s);
+for (const s of ['$3,000.00', '$2,040.99', '$1,916.49', '$759.01', '$200.00', '$1,615.50', '$300.99', '$1,104.50', '$680.00', '$80.00']) assert.ok(tot.includes(s), 'Totales contiene ' + s);
 await shot('04-totales-mes');
 // fin de mes: el sobrante del presupuesto pasa a ahorros sin cambiar el saldo
 await page.getByRole('button', { name: /Pasar sobrante/ }).click();
@@ -151,11 +159,17 @@ assert.equal(await page.getByLabel('Pagado: Renta').isChecked(), false, 'el pago
 assert.equal(await strip('Ingresos'), '$2,500.00', 'sólo el ingreso recurrente');
 assert.match(await page.locator('.item.tx', { hasText: 'Super' }).textContent(), /0 transacc\./);
 await shot('05-mes-siguiente');
+// el reembolso de octubre aparece pendiente en noviembre y se puede marcar como cobrado
+assert.match(await page.locator('.cat-reimb').textContent(), /Pendientes de meses anteriores · \$80\.00/);
+await page.getByLabel('Reembolsado: Cena de trabajo').click({ force: true });
+await page.waitForTimeout(150);
+assert.doesNotMatch(await page.locator('.cat-reimb').textContent(), /meses anteriores/);
 const r2 = page.getByLabel('Importe de Renta');
 await r2.fill('1100'); await r2.press('Enter');
 await page.getByLabel('Pagado: Renta').check({ force: true });
 await page.getByRole('button', { name: 'Mes anterior' }).click();
 assert.equal(await page.getByLabel('Importe de Renta').inputValue(), '1000.00', 'el mes anterior no cambia');
+assert.match(await page.locator('.cat-reimb').textContent(), /OK reembolsado/);
 assert.equal(await strip('Gastos'), '$1,916.49');
 
 // 9. Totales anuales

@@ -185,6 +185,11 @@ small { font-size: .78rem; }
 .cat-baby .cat-head { border-left: 4px solid var(--c-baby); }
 .cat-general .cat-head { border-left: 4px solid var(--c-general); }
 .cat-savings .cat-head { border-left: 4px solid var(--c-savings); }
+.cat-reimb .cat-head { border-left: 4px solid var(--muted); }
+.older { margin-top: 12px; }
+.older h3 { margin: 0 0 2px; }
+.reimb-row td { color: var(--muted); }
+.amount.warn { color: var(--warn); }
 .chev { display: inline-block; transition: transform .15s; font-size: 1.3rem; color: var(--muted); width: 14px; text-align: center; }
 .open > .cat-head .chev, .item.open .tx-head .chev { transform: rotate(90deg); }
 .cat-body { padding: 0 10px 10px; }

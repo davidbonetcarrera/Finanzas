@@ -62,6 +62,9 @@ export function monthCalc(month) {
   // Ahorros: no son gasto; se restan aparte. "Apartado" = ya transferido/guardado.
   const sv = categoryCalc(month && month.savings ? month.savings : []);
   const savings = sv.real, savingsDone = sv.paid, savingsPending = sv.pending;
+  // Reembolsos: "paid" = ya nos lo devolvieron.
+  const rb = categoryCalc(month && month.reimb ? month.reimb : []);
+  const reimb = rb.real, reimbDone = rb.paid, reimbPending = rb.pending;
   const closed = !!(month && month.budgetsClosed);
   const reserved = closed ? 0 : unspent;     // presupuesto aún sin gastar, ya restado del saldo
   const committed = real + reserved;          // gastos reales + presupuesto reservado
@@ -69,9 +72,10 @@ export function monthCalc(month) {
     income, cats, real, paid, pending,
     savings, savingsDone, savingsPending, savingsCat: sv,
     reserved, committed, budgetsClosed: closed,
+    reimb, reimbDone, reimbPending,
     spendBalance: income - real,                  // ingresos − gastos reales (informativo)
     balance: income - committed - savings,        // saldo libre: ingresos − gastos − presupuesto reservado − ahorro
-    cashNow: income - paid - savingsDone,         // dinero que queda tras lo ya pagado y apartado
+    cashNow: income - paid - savingsDone - reimbPending, // dinero que queda tras lo pagado, apartado y adelantado sin cobrar
     budget, budgetReal, budgetRemaining: budget - budgetReal, unspent, over,
     hasData: income !== 0 || real !== 0 || savings !== 0,
   };
@@ -85,10 +89,10 @@ export function periodCalc(state, keys) {
   const months = sorted.map((key) => ({ key, ...monthCalc(state.months[key] || null) }));
   const withData = months.filter((m) => m.hasData);
   const n = withData.length;
-  const tot = { income: 0, real: 0, paid: 0, pending: 0, balance: 0, savings: 0, savingsDone: 0, spendBalance: 0, reserved: 0, committed: 0, budget: 0, budgetReal: 0, unspent: 0, over: 0, fixed: 0, baby: 0, general: 0 };
+  const tot = { income: 0, real: 0, paid: 0, pending: 0, balance: 0, savings: 0, savingsDone: 0, spendBalance: 0, reserved: 0, committed: 0, reimb: 0, reimbPending: 0, budget: 0, budgetReal: 0, unspent: 0, over: 0, fixed: 0, baby: 0, general: 0 };
   for (const m of months) {
     tot.income += m.income; tot.real += m.real; tot.paid += m.paid; tot.pending += m.pending;
-    tot.balance += m.balance; tot.savings += m.savings; tot.savingsDone += m.savingsDone; tot.spendBalance += m.spendBalance; tot.reserved += m.reserved; tot.committed += m.committed;
+    tot.balance += m.balance; tot.savings += m.savings; tot.savingsDone += m.savingsDone; tot.spendBalance += m.spendBalance; tot.reserved += m.reserved; tot.committed += m.committed; tot.reimb += m.reimb; tot.reimbPending += m.reimbPending;
     tot.budget += m.budget; tot.budgetReal += m.budgetReal;
     tot.unspent += m.unspent; tot.over += m.over;
     for (const { key } of CATS) tot[key] += m.cats[key].real;
@@ -151,4 +155,13 @@ export function closeBudgets(month, makeItem) {
 export function reopenBudgets(month) {
   month.savings = month.savings.filter((i) => i.src !== 'leftover');
   month.budgetsClosed = false;
+}
+
+/** Reembolsos pendientes de cobro en todos los meses anteriores a `key`. */
+export function pendingReimbBefore(state, key) {
+  const out = [];
+  for (const k of Object.keys(state.months).filter((x) => x < key).sort()) {
+    for (const it of state.months[k].reimb || []) if (!it.paid && it.amount > 0) out.push({ key: k, item: it });
+  }
+  return out;
 }

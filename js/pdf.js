@@ -81,7 +81,8 @@ export async function buildPdf(state, keys) {
         ['Presupuesto por gastar (ya reservado)', money(c.reserved)],
         ['Ahorro del mes', money(c.savings)],
         ['Saldo libre (ingresos - gastos - presupuesto reservado - ahorro)', money(c.balance)],
-        ['Disponible tras pagos y ahorro apartado', money(c.cashNow)],
+        ['Disponible tras pagos, ahorro y reembolsos por cobrar', money(c.cashNow)],
+        ['Reembolsos por cobrar (no afectan al saldo)', money(c.reimbPending)],
         ['Presupuestos asignados', money(c.budget)],
         ['Gastado en partidas con presupuesto', money(c.budgetReal)],
         ['Presupuesto restante (- = exceso)', money(c.budgetRemaining)],
@@ -133,6 +134,16 @@ export async function buildPdf(state, keys) {
       columnStyles: right([2, 3, 4, 5]),
       headStyles: { fillColor: [150, 118, 64], textColor: [255, 255, 255] },
     });
+    if (m.reimb.length) {
+      section(`Reembolsos · por cobrar ${money(c.reimbPending)} (no son gasto)`);
+      table({
+        head: [['Concepto', 'Quién lo devuelve', 'Fecha', 'Importe', 'Estado']],
+        body: m.reimb.map((it) => [it.name, it.who, shortDate(it.date), money(it.amount), it.paid ? 'Reembolsado' + (it.paidDate ? ' ' + shortDate(it.paidDate) : '') : 'Por cobrar']),
+        foot: [['Total', '', '', money(c.reimb), `Por cobrar ${money(c.reimbPending)}`]],
+        columnStyles: right([3]),
+        headStyles: { fillColor: [120, 104, 90], textColor: [255, 255, 255] },
+      });
+    }
   } else {
     const t = r.period.totals;
     const a = r.period.avg;
@@ -149,6 +160,7 @@ export async function buildPdf(state, keys) {
         ['Pendiente de pago', money(t.pending), money(a.pending)],
         ['Presupuesto por gastar (reservado)', money(t.reserved), money(a.reserved)],
         ['Ahorro', money(t.savings), money(a.savings)],
+        ['Reembolsos por cobrar', money(t.reimbPending), ''],
         ['Saldo libre (ingresos - gastos - reservado - ahorro)', money(t.balance), money(a.balance)],
         ['Presupuestos asignados', money(t.budget), ''],
         ['Gastado en partidas con presupuesto', money(t.budgetReal), ''],

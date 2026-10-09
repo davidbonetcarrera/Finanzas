@@ -65,6 +65,7 @@ Consejos:
 - **Gastos del bebé.** «+ Añadir partida del bebé»: elige *Importe directo* para compras puntuales o *Presupuesto + transacciones* para partidas como Pañales o Supermercado bebé. Puedes hacer que se repita cada mes.
 - **Gastos generales.** «+ Añadir gasto»: nombre, importe real, fecha y si está pagado. Si alguna vez necesitas desglose, elige el otro tipo.
 - **Ahorros.** Cuarta sección, aparte de los gastos: «+ Añadir ahorro» (p. ej. Fondo de emergencia) con el importe del mes y la casilla «apartado» cuando lo transfieras. También puede tener una meta y aportaciones. El ahorro **no cuenta como gasto**, pero se resta aparte: **Saldo libre = ingresos − gastos reales − ahorro**. Por defecto se repite cada mes.
+- **Reembolsos.** Quinta sección, para lo que pagáis vosotros y os tienen que devolver (empresa, seguro, familia…). Con «+ Añadir reembolso» indicas el concepto, quién lo devuelve, el importe y la fecha. Marca la casilla cuando os lo devuelvan («✓ OK reembolsado»). **No cuenta como gasto ni cambia el saldo libre**, pero mientras no se cobre sí reduce el «Disponible tras pagos». Los reembolsos pendientes de meses anteriores aparecen al final de la sección para marcarlos cuando lleguen. Si al final no os lo devuelven, elimínalo y regístralo como gasto general.
 - **Opciones** de cada partida: renombrar, cambiar de tipo (activar o desactivar el desglose), observaciones, eliminar.
 
 Los importes aceptan `475.50`, `475,50`, `1,075.50` o `$600`.
@@ -92,7 +93,7 @@ Los importes aceptan `475.50`, `475,50`, `1,075.50` o `$600`.
 Totales → «Exportar informe» → **Descargar PDF** o **Descargar Excel**. Se exporta el período que estás viendo (mes, año o meses seleccionados). En iPhone se abre el menú Compartir para guardarlo en Archivos, enviarlo, etc.
 
 - **PDF:** resumen, ingresos, cada categoría con presupuesto, gasto real, pagado, pendiente y restante, y las transacciones. Los informes de varios meses incluyen gráfico, comparación mensual, presupuesto frente a real y gasto por partida.
-- **Excel:** hojas *Resumen* (por mes, con totales y promedios), *Ingresos*, *Gastos* (una fila por partida), *Ahorros*, *Transacciones*, *Presupuesto vs real* y *Por partida*. Las hojas de registros tienen filtros y los importes son números, para hacer tus propios cálculos. No sumes *Gastos* y *Transacciones* juntas: el gasto real de *Gastos* ya incluye sus transacciones.
+- **Excel:** hojas *Resumen* (por mes, con totales y promedios), *Ingresos*, *Gastos* (una fila por partida), *Ahorros*, *Reembolsos*, *Transacciones*, *Presupuesto vs real* y *Por partida*. Las hojas de registros tienen filtros y los importes son números, para hacer tus propios cálculos. No sumes *Gastos* y *Transacciones* juntas: el gasto real de *Gastos* ya incluye sus transacciones.
 
 ## 6. Copias de seguridad y cambio de teléfono
 
@@ -115,7 +116,7 @@ Totales → «Exportar informe» → **Descargar PDF** o **Descargar Excel**. Se
 
 ## 8. Pruebas
 
-- `node --test tests/` ejecuta 14 pruebas: cálculos (incluido el ejemplo de $600 y $475.50, y el de $3,000, $2,000 y $1,200), 2.000 transacciones, independencia de meses, plantillas, resumen anual, cifrado (contraseña errónea y manipulación), validación de copias y Excel.
+- `node --test tests/` ejecuta 15 pruebas: cálculos (incluido el ejemplo de $600 y $475.50, y el de $3,000, $2,000 y $1,200), 2.000 transacciones, independencia de meses, plantillas, resumen anual, cifrado (contraseña errónea y manipulación), validación de copias y Excel.
 - `node tests/e2e.mjs` (requiere Playwright) prueba la app completa en un iPhone simulado: contraseña, ingresos, gastos fijos, Super con 4 compras, bebé con exceso, generales, totales, mes siguiente independiente, resumen anual, PDF y Excel, recarga, bloqueo, datos cifrados en disco, copia restaurada en un Android simulado, tema claro y apertura sin conexión.
 
 ## Estructura

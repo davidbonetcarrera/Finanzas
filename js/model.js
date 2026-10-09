@@ -13,6 +13,10 @@ export const CATS = [
 // Ahorros: sección aparte. No es gasto, pero se resta del saldo del mes.
 export const SAVINGS = { key: 'savings', label: 'Ahorros' };
 
+// Reembolsos: pagos adelantados que alguien os devolverá. No son gasto ni
+// afectan al saldo libre; sólo reducen el dinero disponible hasta que se cobran.
+export const REIMB = { key: 'reimb', label: 'Reembolsos' };
+
 export const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
   'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
@@ -109,6 +113,7 @@ export function buildMonth(state, key) {
     general: [],
     savings: (state.templates.savings || []).map((t) => carry(t, prev && prev.savings)),
     budgetsClosed: false,
+    reimb: [],
   };
 }
 
@@ -160,6 +165,8 @@ function normItem(i) {
     amount: cents(i.amount), paid: bool(i.paid), budget: cents(i.budget),
     date: date(i.date), notes: str(i.notes, 500), tx: arr(i.tx).map(normTx),
     src: i.src === 'leftover' ? 'leftover' : '',
+    who: str(i.who, 80),
+    paidDate: date(i.paidDate),
   };
 }
 function normIncome(i) {
@@ -202,6 +209,7 @@ export function normalizeState(raw) {
       general: arr(m.general).map(normItem),
       savings: arr(m.savings).map(normItem),
       budgetsClosed: bool(m.budgetsClosed),
+      reimb: arr(m.reimb).map(normItem),
     };
   }
   return s;

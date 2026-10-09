@@ -242,7 +242,7 @@ test('Excel: estructura y CRC válidos', () => {
   byName(m, 'fixed', 'Super').budget = 60000;
   byName(m, 'fixed', 'Super').tx.push(newTx({ amount: 47550, desc: 'Compra <semanal> & "más"' }));
   const sheets = workbookSheets(s, ['2026-10']);
-  assert.deepEqual(sheets.map((x) => x.name), ['Resumen', 'Ingresos', 'Gastos', 'Ahorros', 'Transacciones', 'Presupuesto vs real', 'Por partida']);
+  assert.deepEqual(sheets.map((x) => x.name), ['Resumen', 'Ingresos', 'Gastos', 'Ahorros', 'Reembolsos', 'Transacciones', 'Presupuesto vs real', 'Por partida']);
   const bytes = buildXlsx(sheets);
   assert.equal(bytes[0], 0x50); assert.equal(bytes[1], 0x4B);
 });
@@ -280,4 +280,26 @@ test('ahorros: no son gasto, se restan aparte del saldo', () => {
   const n = normalizeState(raw);
   assert.deepEqual(n.months['2026-10'].savings, []);
   assert.deepEqual(n.templates.savings, []);
+});
+
+test('reembolsos: no son gasto ni cambian el saldo; reducen el disponible hasta cobrarlos', async () => {
+  const { pendingReimbBefore } = await import('../js/calc.js');
+  const s = newState();
+  const m = ensureMonth(s, '2026-10');
+  m.incomes.push(newIncome({ amount: 300000 }));
+  byName(m, 'fixed', 'Renta').amount = 100000; byName(m, 'fixed', 'Renta').paid = true;
+  m.reimb.push(newItem({ name: 'Cena de trabajo', amount: 8000 }), newItem({ name: 'Farmacia mamá', amount: 2000, paid: true }));
+  const c = monthCalc(m);
+  assert.equal(c.real, 100000, 'los reembolsos no son gasto');
+  assert.equal(c.balance, 200000, 'el saldo libre no cambia');
+  assert.equal(c.reimb, 10000);
+  assert.equal(c.reimbPending, 8000);
+  assert.equal(c.cashNow, 300000 - 100000 - 8000, 'el dinero adelantado sin cobrar no está disponible');
+  ensureMonth(s, '2026-11');
+  const pend = pendingReimbBefore(s, '2026-11');
+  assert.deepEqual(pend.map((p) => p.item.name), ['Cena de trabajo']);
+  pend[0].item.paid = true;
+  assert.equal(monthCalc(m).reimbPending, 0);
+  const raw = JSON.parse(JSON.stringify(s)); delete raw.months['2026-11'].reimb;
+  assert.deepEqual(normalizeState(raw).months['2026-11'].reimb, []);
 });

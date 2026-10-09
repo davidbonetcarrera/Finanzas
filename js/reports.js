@@ -57,7 +57,8 @@ export function reportData(state, keys) {
         tx: it.mode === 'tx' ? [...it.tx].sort((a, b) => (a.date || '').localeCompare(b.date || '')) : [] };
     };
     const savings = { key: SAVINGS.key, label: SAVINGS.label, items: month && month.savings ? month.savings.map(mapItem) : [], calc: calc.savingsCat };
-    return { savings, key, label: keyLabel(key), short: MONTH_NAMES[parseKey(key).month - 1].slice(0, 3) + ' ' + String(parseKey(key).year).slice(2), month, calc, cats,
+    const reimb = (month && month.reimb ? month.reimb : []).map((it) => ({ name: it.name, who: it.who, date: it.date, paidDate: it.paidDate, notes: it.notes, amount: it.amount, paid: it.paid }));
+    return { reimb, savings, key, label: keyLabel(key), short: MONTH_NAMES[parseKey(key).month - 1].slice(0, 3) + ' ' + String(parseKey(key).year).slice(2), month, calc, cats,
       incomes: month ? month.incomes : [] };
   });
   return { keys: sorted, single: sorted.length === 1, title: periodTitle(sorted), months, period: periodCalc(state, sorted) };
@@ -74,7 +75,7 @@ export function workbookSheets(state, keys, now = new Date()) {
 
   // --- Resumen ---
   const head = ['Mes', 'Ingresos', 'Gastos fijos', 'Gastos bebé', 'Gastos generales', 'Gasto real total',
-    'Pagado', 'Pendiente de pago', 'Presupuesto por gastar (reservado)', 'Ahorro', 'Saldo libre (ingresos − gastos − reservado − ahorro)', 'Disponible tras pagos y ahorro apartado',
+    'Pagado', 'Pendiente de pago', 'Presupuesto por gastar (reservado)', 'Ahorro', 'Saldo libre (ingresos − gastos − reservado − ahorro)', 'Disponible tras pagos, ahorro y reembolsos por cobrar', 'Reembolsos por cobrar',
     'Presupuesto asignado', 'Gasto real en partidas con presupuesto', 'Presupuesto restante (− = exceso)'];
   const rows = [
     [{ v: r.title, title: true }],
@@ -87,18 +88,18 @@ export function workbookSheets(state, keys, now = new Date()) {
   for (const m of r.months) {
     const c = m.calc;
     rows.push([m.label, M(c.income), M(c.cats.fixed.real), M(c.cats.baby.real), M(c.cats.general.real), M(c.real),
-      M(c.paid), M(c.pending), M(c.reserved), M(c.savings), M(c.balance), M(c.cashNow), M(c.budget), M(c.budgetReal), M(c.budgetRemaining)]);
+      M(c.paid), M(c.pending), M(c.reserved), M(c.savings), M(c.balance), M(c.cashNow), M(c.reimbPending), M(c.budget), M(c.budgetReal), M(c.budgetRemaining)]);
   }
   const last = rows.length;
   const t = r.period.totals;
-  const totVals = [t.income, t.fixed, t.baby, t.general, t.real, t.paid, t.pending, t.reserved, t.savings, t.balance, t.income - t.paid - t.savingsDone, t.budget, t.budgetReal, t.budget - t.budgetReal];
+  const totVals = [t.income, t.fixed, t.baby, t.general, t.real, t.paid, t.pending, t.reserved, t.savings, t.balance, t.income - t.paid - t.savingsDone - t.reimbPending, t.reimbPending, t.budget, t.budgetReal, t.budget - t.budgetReal];
   rows.push([{ v: 'TOTAL', bold: true }, ...totVals.map((v, i) => ({ f: `SUM(${colLetter(i + 1)}${first}:${colLetter(i + 1)}${last})`, v: toNumber(v), t: 'money', bold: true }))]);
   if (!r.single) {
     const a = r.period.avg;
     rows.push([{ v: `Promedio mensual (${r.period.monthsWithData} meses con datos)`, bold: true },
       MB(a.income), MB(a.fixed), MB(a.baby), MB(a.general), MB(a.real), MB(a.paid), MB(a.pending), MB(a.reserved), MB(a.savings), MB(a.balance)]);
   }
-  sheets.push({ name: 'Resumen', rows, header: 4, widths: [30, 14, 14, 14, 16, 16, 14, 16, 18, 14, 24, 24, 18, 22, 22] });
+  sheets.push({ name: 'Resumen', rows, header: 4, widths: [30, 14, 14, 14, 16, 16, 14, 16, 18, 14, 24, 24, 16, 18, 22, 22] });
 
   // --- Ingresos ---
   const inc = [['Mes', 'Descripción', 'Fecha', 'Importe', 'Observaciones']];
@@ -124,6 +125,13 @@ export function workbookSheets(state, keys, now = new Date()) {
       M(c.real), M(c.paid), M(c.pending), it.status, it.date, it.notes]);
   }
   sheets.push({ name: 'Ahorros', rows: sv, header: 0, filter: true, widths: [10, 24, 16, 14, 14, 14, 14, 16, 12, 30] });
+
+  // --- Reembolsos ---
+  const rb = [['Mes', 'Concepto', 'Quién lo devuelve', 'Fecha del pago', 'Importe', 'Reembolsado', 'Fecha de cobro', 'Por cobrar', 'Observaciones']];
+  for (const m of r.months) for (const it of m.reimb) {
+    rb.push([m.key, it.name, it.who, it.date, M(it.amount), it.paid ? 'Sí' : 'No', it.paidDate, M(it.paid ? 0 : it.amount), it.notes]);
+  }
+  sheets.push({ name: 'Reembolsos', rows: rb, header: 0, filter: true, widths: [10, 26, 20, 12, 14, 12, 12, 14, 30] });
 
   // --- Transacciones ---
   const tx = [['Mes', 'Categoría', 'Partida', 'Fecha', 'Descripción', 'Importe', 'Pagado']];
