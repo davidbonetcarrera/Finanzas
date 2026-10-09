@@ -1,6 +1,6 @@
 // Service worker: guarda la app en caché para abrirla sin conexión.
 // No toca los datos (están cifrados en IndexedDB) ni hace peticiones externas.
-const VERSION = 'finanzas-v1.3.0';
+const VERSION = 'finanzas-v1.3.1';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/calc.js', 'js/charts.js', 'js/crypto.js', 'js/dom.js', 'js/model.js', 'js/money.js',
@@ -10,7 +10,8 @@ const FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)));
+  // cache: 'reload' evita copiar archivos antiguos de la caché HTTP del navegador
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))));
 });
 
 self.addEventListener('activate', (e) => {

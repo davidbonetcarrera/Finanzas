@@ -846,7 +846,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.3 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.3.1 · funciona sin conexión'),
   );
 }
 
@@ -1143,7 +1143,11 @@ const iconChart = () => icon(['M4 20V10', 'M10 20V4', 'M16 20v-7', 'M22 20H2']);
 
 // Service worker (funcionamiento sin conexión) y aviso de actualización
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').then((reg) => {
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    // Buscar versiones nuevas al abrir y al volver a la app (en iPhone la app instalada no siempre recarga)
+    const check = () => reg.update().catch(() => {});
+    check();
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
     const offer = (w) => {
       const bar = h('div', { class: 'update-bar' }, 'Hay una versión nueva de la app.',
         h('button', { class: 'btn small primary', onclick: async () => { await flushSave(); w.postMessage('skipWaiting'); } }, 'Actualizar'));
