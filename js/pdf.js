@@ -80,9 +80,10 @@ export async function buildPdf(state, keys) {
         ['Ingresos - gasto real', money(c.spendBalance)],
         ['Presupuesto por gastar (ya reservado)', money(c.reserved)],
         ['Ahorro del mes', money(c.savings)],
-        ['Saldo libre (ingresos - gastos - presupuesto reservado - ahorro)', money(c.balance)],
-        ['Disponible tras pagos, ahorro y reembolsos por cobrar', money(c.cashNow)],
-        ['Reembolsos por cobrar (no afectan al saldo)', money(c.reimbPending)],
+        ['Reembolsos cobrados (se suman al saldo)', money(c.reimbDone)],
+        ['Saldo libre (ingresos - gastos - reservado - ahorro + reembolsos cobrados)', money(c.balance)],
+        ['Disponible tras pagos y ahorro (+ reembolsos cobrados)', money(c.cashNow)],
+        ['Reembolsos por cobrar (se sumarán al saldo al cobrarlos)', money(c.reimbPending)],
         ['Presupuestos asignados', money(c.budget)],
         ['Gastado en partidas con presupuesto', money(c.budgetReal)],
         ['Presupuesto restante (- = exceso)', money(c.budgetRemaining)],
@@ -135,7 +136,7 @@ export async function buildPdf(state, keys) {
       headStyles: { fillColor: [150, 118, 64], textColor: [255, 255, 255] },
     });
     if (m.reimb.length) {
-      section(`Reembolsos · por cobrar ${money(c.reimbPending)} (no son gasto)`);
+      section(`Reembolsos · por cobrar ${money(c.reimbPending)} (ya incluidos en gastos; al cobrarlos suman al saldo)`);
       table({
         head: [['Concepto', 'Quién lo devuelve', 'Fecha', 'Importe', 'Estado']],
         body: m.reimb.map((it) => [it.name, it.who, shortDate(it.date), money(it.amount), it.paid ? 'Reembolsado' + (it.paidDate ? ' ' + shortDate(it.paidDate) : '') : 'Por cobrar']),
@@ -160,8 +161,9 @@ export async function buildPdf(state, keys) {
         ['Pendiente de pago', money(t.pending), money(a.pending)],
         ['Presupuesto por gastar (reservado)', money(t.reserved), money(a.reserved)],
         ['Ahorro', money(t.savings), money(a.savings)],
+        ['Reembolsos cobrados', money(t.reimbDone), ''],
         ['Reembolsos por cobrar', money(t.reimbPending), ''],
-        ['Saldo libre (ingresos - gastos - reservado - ahorro)', money(t.balance), money(a.balance)],
+        ['Saldo libre (ingresos - gastos - reservado - ahorro + reembolsos cobrados)', money(t.balance), money(a.balance)],
         ['Presupuestos asignados', money(t.budget), ''],
         ['Gastado en partidas con presupuesto', money(t.budgetReal), ''],
       ],

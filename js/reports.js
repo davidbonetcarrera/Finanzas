@@ -75,12 +75,12 @@ export function workbookSheets(state, keys, now = new Date()) {
 
   // --- Resumen ---
   const head = ['Mes', 'Ingresos', 'Gastos fijos', 'Gastos bebé', 'Gastos generales', 'Gasto real total',
-    'Pagado', 'Pendiente de pago', 'Presupuesto por gastar (reservado)', 'Ahorro', 'Saldo libre (ingresos − gastos − reservado − ahorro)', 'Disponible tras pagos, ahorro y reembolsos por cobrar', 'Reembolsos por cobrar',
+    'Pagado', 'Pendiente de pago', 'Presupuesto por gastar (reservado)', 'Ahorro', 'Reembolsos cobrados', 'Saldo libre (ingresos − gastos − reservado − ahorro + reembolsos cobrados)', 'Disponible tras pagos y ahorro (+ reembolsos cobrados)', 'Reembolsos por cobrar',
     'Presupuesto asignado', 'Gasto real en partidas con presupuesto', 'Presupuesto restante (− = exceso)'];
   const rows = [
     [{ v: r.title, title: true }],
     [`Generado el ${now.toLocaleDateString('es-PA')} · importes en USD`],
-    ['El gasto real de las partidas con desglose es la suma de sus transacciones (hoja Transacciones). Los presupuestos no se cuentan como gasto. El saldo libre resta el presupuesto completo: lo que aún no se ha gastado aparece como «Presupuesto por gastar (reservado)» hasta pasarlo a Ahorros. El ahorro no es gasto, pero también se resta.'],
+    ['El gasto real de las partidas con desglose es la suma de sus transacciones (hoja Transacciones). Los presupuestos no se cuentan como gasto. El saldo libre resta el presupuesto completo: lo que aún no se ha gastado aparece como «Presupuesto por gastar (reservado)» hasta pasarlo a Ahorros. El ahorro no es gasto, pero también se resta. Los reembolsos ya están incluidos en los gastos: al cobrarlos se suman al saldo.'],
     [],
     head,
   ];
@@ -88,18 +88,18 @@ export function workbookSheets(state, keys, now = new Date()) {
   for (const m of r.months) {
     const c = m.calc;
     rows.push([m.label, M(c.income), M(c.cats.fixed.real), M(c.cats.baby.real), M(c.cats.general.real), M(c.real),
-      M(c.paid), M(c.pending), M(c.reserved), M(c.savings), M(c.balance), M(c.cashNow), M(c.reimbPending), M(c.budget), M(c.budgetReal), M(c.budgetRemaining)]);
+      M(c.paid), M(c.pending), M(c.reserved), M(c.savings), M(c.reimbDone), M(c.balance), M(c.cashNow), M(c.reimbPending), M(c.budget), M(c.budgetReal), M(c.budgetRemaining)]);
   }
   const last = rows.length;
   const t = r.period.totals;
-  const totVals = [t.income, t.fixed, t.baby, t.general, t.real, t.paid, t.pending, t.reserved, t.savings, t.balance, t.income - t.paid - t.savingsDone - t.reimbPending, t.reimbPending, t.budget, t.budgetReal, t.budget - t.budgetReal];
+  const totVals = [t.income, t.fixed, t.baby, t.general, t.real, t.paid, t.pending, t.reserved, t.savings, t.reimbDone, t.balance, t.income - t.paid - t.savingsDone + t.reimbDone, t.reimbPending, t.budget, t.budgetReal, t.budget - t.budgetReal];
   rows.push([{ v: 'TOTAL', bold: true }, ...totVals.map((v, i) => ({ f: `SUM(${colLetter(i + 1)}${first}:${colLetter(i + 1)}${last})`, v: toNumber(v), t: 'money', bold: true }))]);
   if (!r.single) {
     const a = r.period.avg;
     rows.push([{ v: `Promedio mensual (${r.period.monthsWithData} meses con datos)`, bold: true },
-      MB(a.income), MB(a.fixed), MB(a.baby), MB(a.general), MB(a.real), MB(a.paid), MB(a.pending), MB(a.reserved), MB(a.savings), MB(a.balance)]);
+      MB(a.income), MB(a.fixed), MB(a.baby), MB(a.general), MB(a.real), MB(a.paid), MB(a.pending), MB(a.reserved), MB(a.savings), null, MB(a.balance)]);
   }
-  sheets.push({ name: 'Resumen', rows, header: 4, widths: [30, 14, 14, 14, 16, 16, 14, 16, 18, 14, 24, 24, 16, 18, 22, 22] });
+  sheets.push({ name: 'Resumen', rows, header: 4, widths: [30, 14, 14, 14, 16, 16, 14, 16, 18, 14, 16, 24, 24, 16, 18, 22, 22] });
 
   // --- Ingresos ---
   const inc = [['Mes', 'Descripción', 'Fecha', 'Importe', 'Observaciones']];

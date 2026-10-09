@@ -282,7 +282,7 @@ test('ahorros: no son gasto, se restan aparte del saldo', () => {
   assert.deepEqual(n.templates.savings, []);
 });
 
-test('reembolsos: no son gasto ni cambian el saldo; reducen el disponible hasta cobrarlos', async () => {
+test('reembolsos: el pago ya está en gastos; al cobrarlo se suma al saldo', async () => {
   const { pendingReimbBefore } = await import('../js/calc.js');
   const s = newState();
   const m = ensureMonth(s, '2026-10');
@@ -290,16 +290,18 @@ test('reembolsos: no son gasto ni cambian el saldo; reducen el disponible hasta 
   byName(m, 'fixed', 'Renta').amount = 100000; byName(m, 'fixed', 'Renta').paid = true;
   m.reimb.push(newItem({ name: 'Cena de trabajo', amount: 8000 }), newItem({ name: 'Farmacia mamá', amount: 2000, paid: true }));
   const c = monthCalc(m);
-  assert.equal(c.real, 100000, 'los reembolsos no son gasto');
-  assert.equal(c.balance, 200000, 'el saldo libre no cambia');
+  assert.equal(c.real, 100000, 'los reembolsos no se cuentan otra vez como gasto');
+  assert.equal(c.balance, 200000 + 2000, 'sólo lo cobrado se suma al saldo');
   assert.equal(c.reimb, 10000);
+  assert.equal(c.reimbDone, 2000);
   assert.equal(c.reimbPending, 8000);
-  assert.equal(c.cashNow, 300000 - 100000 - 8000, 'el dinero adelantado sin cobrar no está disponible');
+  assert.equal(c.cashNow, 300000 - 100000 + 2000, 'lo cobrado vuelve al disponible');
   ensureMonth(s, '2026-11');
   const pend = pendingReimbBefore(s, '2026-11');
   assert.deepEqual(pend.map((p) => p.item.name), ['Cena de trabajo']);
   pend[0].item.paid = true;
   assert.equal(monthCalc(m).reimbPending, 0);
+  assert.equal(monthCalc(m).balance, 210000, 'al cobrarlo desde otro mes se suma al saldo de su mes');
   const raw = JSON.parse(JSON.stringify(s)); delete raw.months['2026-11'].reimb;
   assert.deepEqual(normalizeState(raw).months['2026-11'].reimb, []);
 });

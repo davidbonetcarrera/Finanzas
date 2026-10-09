@@ -336,15 +336,16 @@ function reimbSection(m) {
     h('button', { class: 'cat-head', 'aria-expanded': String(isOpen), onclick: () => { isOpen ? app.open.delete('reimb') : app.open.add('reimb'); render(); } },
       h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
       h('span', { class: 'cat-title' }, REIMB.label, h('small', null,
-        ['No es gasto: os lo devuelven', pending ? `por cobrar ${fmt(pending)}` : null, olderTotal ? `+ ${fmt(olderTotal)} de meses anteriores` : null].filter(Boolean).join(' · '))),
+        ['Ya incluido en tus gastos; al cobrarlo se suma al saldo', pending ? `por cobrar ${fmt(pending)}` : null, olderTotal ? `+ ${fmt(olderTotal)} de meses anteriores` : null].filter(Boolean).join(' · '))),
       h('b', { class: 'cat-total' }, fmt(total)),
     ),
     isOpen ? h('div', { class: 'cat-body' },
-      items.length === 0 ? h('p', { class: 'empty' }, 'Sin reembolsos este mes. Añade lo que paguéis y os tengan que devolver.') : null,
+      items.length === 0 ? h('p', { class: 'empty' }, 'Sin reembolsos este mes. Anota aquí lo que os tengan que devolver de un pago que ya registraste en gastos.') : null,
       h('ul', { class: 'items' }, items.map((it) => row(it, app.key))),
       h('button', { class: 'btn add', onclick: () => editReimb(null, app.key) }, '+ Añadir reembolso'),
       older.length ? h('div', { class: 'older' },
         h('h3', null, `Pendientes de meses anteriores · ${fmt(olderTotal)}`),
+        h('p', { class: 'muted small' }, 'Al marcarlos se suman al saldo del mes en que se registraron.'),
         h('ul', { class: 'items' }, older.map((o) => row(o.item, o.key)))) : null,
     ) : null,
   );
@@ -365,11 +366,11 @@ async function editReimb(it, key) {
     fields: [
       { name: 'name', label: 'Concepto', type: 'text', value: it ? it.name : '', required: true, autofocus: !it, placeholder: 'Cena de trabajo, compra para mamá…' },
       { name: 'who', label: 'Quién lo devuelve (opcional)', type: 'text', value: it ? it.who : '', placeholder: 'Empresa, seguro, familiar…' },
-      { name: 'amount', label: 'Importe pagado', type: 'amount', value: it ? it.amount : 0 },
+      { name: 'amount', label: 'Importe a reembolsar', type: 'amount', value: it ? it.amount : 0 },
       { name: 'date', label: 'Fecha del pago', type: 'date', value: it ? it.date : defaultDate() },
       { name: 'paid', label: 'Ya nos lo devolvieron', type: 'checkbox', value: it ? it.paid : false },
       { name: 'notes', label: 'Observaciones (opcional)', type: 'textarea', value: it ? it.notes : '' },
-      it ? { type: 'note', name: 'n', label: 'Si al final no os lo devuelven, elimínalo y regístralo como gasto general.' } : null,
+      it ? { type: 'note', name: 'n', label: 'El pago ya debe estar registrado en tus gastos. Al marcarlo como devuelto, el importe se suma al saldo. Si al final no os lo devuelven, simplemente elimínalo.' } : null,
     ].filter(Boolean),
     deleteLabel: it ? 'Eliminar' : null,
     submitLabel: it ? 'Guardar' : 'Añadir',
@@ -574,12 +575,12 @@ function monthTotals(c) {
         kpi('Ingresos', c.income, 'pos'),
         kpi('Gastos', c.committed, '', c.reserved ? `Reales ${fmt(c.real)} + presupuesto por gastar ${fmt(c.reserved)}` : 'Gastos reales'),
         kpi('Ahorro', c.savings, 'sav', c.savingsPending ? `Por apartar ${fmt(c.savingsPending)}` : 'No es gasto'),
-        kpi('Saldo libre', c.balance, c.balance < 0 ? 'neg big' : 'pos big', 'Ingresos − gastos − ahorro'),
+        kpi('Saldo libre', c.balance, c.balance < 0 ? 'neg big' : 'pos big', c.reimbDone ? `Ingresos − gastos − ahorro + ${fmt(c.reimbDone)} reembolsados` : 'Ingresos − gastos − ahorro'),
         kpi('Pagado', c.paid, 'pos'),
         kpi('Pendiente de pago', c.pending, c.pending ? 'warn' : ''),
         kpi('Gastado de verdad', c.real, '', 'Sin contar presupuesto por gastar'),
-        kpi('Disponible tras pagos', c.cashNow, '', c.reimbPending ? 'Ingresos − pagado − apartado − adelantado sin cobrar' : 'Ingresos − pagado − apartado'),
-        c.reimb ? kpi('Reembolsos por cobrar', c.reimbPending, c.reimbPending ? 'warn' : 'pos', c.reimbPending ? `De ${fmt(c.reimb)} adelantados. No afecta al saldo` : '✓ Todo cobrado') : null,
+        kpi('Disponible tras pagos', c.cashNow, '', c.reimbDone ? 'Ingresos − pagado − apartado + reembolsado' : 'Ingresos − pagado − apartado'),
+        c.reimb ? kpi('Reembolsos por cobrar', c.reimbPending, c.reimbPending ? 'warn' : 'pos', c.reimbPending ? `Al cobrarlos se suman al saldo (+${fmt(c.reimbPending)})` : '✓ Todo cobrado y sumado al saldo') : null,
       ),
       h('p', { class: 'explain' }, (c.pending + c.savingsPending) > 0
         ? `Hoy te quedan ${fmt(c.cashNow)} tras lo pagado${c.savings ? ' y lo ya apartado' : ''}. De eso, ${fmt(c.pending)} son pagos pendientes${c.savingsPending ? `, ${fmt(c.savingsPending)} ahorro por apartar` : ''}${c.reserved ? ` y ${fmt(c.reserved)} presupuesto aún por gastar` : ''}. Lo que de verdad te queda libre: ${fmt(c.balance)}.`
@@ -846,7 +847,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.3.1 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.4 · funciona sin conexión'),
   );
 }
 

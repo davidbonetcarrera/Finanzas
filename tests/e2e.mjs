@@ -118,19 +118,19 @@ assert.equal(await strip('Ahorro'), '$200.00');
 assert.equal(await strip('Saldo'), '$759.01');
 assert.match(await page.locator('.cat-savings').textContent(), /OK apartado/);
 
-// 6c. Reembolsos: no son gasto ni cambian el saldo
+// 6c. Reembolsos: el pago ya está en gastos; al cobrarlo se suma al saldo
 await page.getByRole('button', { name: '+ Añadir reembolso' }).click();
-await fill('Concepto', 'Cena de trabajo'); await fill('Quién lo devuelve', 'Empresa'); await fill('Importe pagado', '80');
+await fill('Concepto', 'Cena de trabajo'); await fill('Quién lo devuelve', 'Empresa'); await fill('Importe a reembolsar', '80');
 await submit('Añadir');
 assert.equal(await strip('Gastos'), '$2,040.99', 'el reembolso no es gasto');
-assert.equal(await strip('Saldo'), '$759.01', 'el reembolso no cambia el saldo');
+assert.equal(await strip('Saldo'), '$759.01', 'pendiente de cobro no cambia el saldo');
 assert.match(await page.locator('.cat-reimb').textContent(), /por cobrar \$80\.00/);
 await page.locator('.cat-fixed .cat-head').scrollIntoViewIfNeeded();
 await shot('03-gastos');
 
 await page.getByRole('button', { name: 'Totales', exact: true }).click();
 const tot = await page.locator('.view').textContent();
-for (const s of ['$3,000.00', '$2,040.99', '$1,916.49', '$759.01', '$200.00', '$1,615.50', '$300.99', '$1,104.50', '$680.00', '$80.00']) assert.ok(tot.includes(s), 'Totales contiene ' + s);
+for (const s of ['$3,000.00', '$2,040.99', '$1,916.49', '$759.01', '$200.00', '$1,615.50', '$300.99', '$1,184.50', '$680.00', '$80.00']) assert.ok(tot.includes(s), 'Totales contiene ' + s);
 await shot('04-totales-mes');
 // fin de mes: el sobrante del presupuesto pasa a ahorros sin cambiar el saldo
 await page.getByRole('button', { name: /Pasar sobrante/ }).click();
@@ -171,6 +171,7 @@ await page.getByRole('button', { name: 'Mes anterior' }).click();
 assert.equal(await page.getByLabel('Importe de Renta').inputValue(), '1000.00', 'el mes anterior no cambia');
 assert.match(await page.locator('.cat-reimb').textContent(), /OK reembolsado/);
 assert.equal(await strip('Gastos'), '$1,916.49');
+assert.equal(await strip('Saldo'), '$839.01', 'el reembolso cobrado se suma al saldo de su mes');
 
 // 9. Totales anuales
 await page.getByRole('button', { name: 'Totales', exact: true }).click();

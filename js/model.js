@@ -13,8 +13,8 @@ export const CATS = [
 // Ahorros: sección aparte. No es gasto, pero se resta del saldo del mes.
 export const SAVINGS = { key: 'savings', label: 'Ahorros' };
 
-// Reembolsos: pagos adelantados que alguien os devolverá. No son gasto ni
-// afectan al saldo libre; sólo reducen el dinero disponible hasta que se cobran.
+// Reembolsos: pagos que alguien os devolverá. El pago ya está incluido en los
+// gastos; cuando se marca como reembolsado, su importe se suma al saldo.
 export const REIMB = { key: 'reimb', label: 'Reembolsos' };
 
 export const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',

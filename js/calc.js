@@ -74,8 +74,9 @@ export function monthCalc(month) {
     reserved, committed, budgetsClosed: closed,
     reimb, reimbDone, reimbPending,
     spendBalance: income - real,                  // ingresos − gastos reales (informativo)
-    balance: income - committed - savings,        // saldo libre: ingresos − gastos − presupuesto reservado − ahorro
-    cashNow: income - paid - savingsDone - reimbPending, // dinero que queda tras lo pagado, apartado y adelantado sin cobrar
+    // Lo reembolsable ya está incluido en los gastos; al cobrarlo vuelve al saldo.
+    balance: income - committed - savings + reimbDone, // saldo libre: ingresos − gastos − reservado − ahorro + reembolsos cobrados
+    cashNow: income - paid - savingsDone + reimbDone,  // dinero que queda tras lo pagado y apartado, más lo ya reembolsado
     budget, budgetReal, budgetRemaining: budget - budgetReal, unspent, over,
     hasData: income !== 0 || real !== 0 || savings !== 0,
   };
@@ -89,10 +90,10 @@ export function periodCalc(state, keys) {
   const months = sorted.map((key) => ({ key, ...monthCalc(state.months[key] || null) }));
   const withData = months.filter((m) => m.hasData);
   const n = withData.length;
-  const tot = { income: 0, real: 0, paid: 0, pending: 0, balance: 0, savings: 0, savingsDone: 0, spendBalance: 0, reserved: 0, committed: 0, reimb: 0, reimbPending: 0, budget: 0, budgetReal: 0, unspent: 0, over: 0, fixed: 0, baby: 0, general: 0 };
+  const tot = { income: 0, real: 0, paid: 0, pending: 0, balance: 0, savings: 0, savingsDone: 0, spendBalance: 0, reserved: 0, committed: 0, reimb: 0, reimbDone: 0, reimbPending: 0, budget: 0, budgetReal: 0, unspent: 0, over: 0, fixed: 0, baby: 0, general: 0 };
   for (const m of months) {
     tot.income += m.income; tot.real += m.real; tot.paid += m.paid; tot.pending += m.pending;
-    tot.balance += m.balance; tot.savings += m.savings; tot.savingsDone += m.savingsDone; tot.spendBalance += m.spendBalance; tot.reserved += m.reserved; tot.committed += m.committed; tot.reimb += m.reimb; tot.reimbPending += m.reimbPending;
+    tot.balance += m.balance; tot.savings += m.savings; tot.savingsDone += m.savingsDone; tot.spendBalance += m.spendBalance; tot.reserved += m.reserved; tot.committed += m.committed; tot.reimb += m.reimb; tot.reimbDone += m.reimbDone; tot.reimbPending += m.reimbPending;
     tot.budget += m.budget; tot.budgetReal += m.budgetReal;
     tot.unspent += m.unspent; tot.over += m.over;
     for (const { key } of CATS) tot[key] += m.cats[key].real;
