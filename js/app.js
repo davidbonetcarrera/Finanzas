@@ -7,7 +7,8 @@ import {
 } from './model.js';
 import { itemCalc, monthCalc, periodCalc, closeBudgets, reopenBudgets, pendingReimbBefore } from './calc.js';
 import { createSession, seal, open, openWith, isEnvelope, MIN_PASSPHRASE } from './crypto.js';
-import { loadVault, saveVault, wipeVault, requestPersistence } from './store.js';
+import { loadVault, saveVault, wipeVault, requestPersistence, loadSync, saveSync } from './store.js';
+import { syncConfigured, newCode, extractCode, isCode, remoteRev, remoteGet, remotePut, merge3 } from './sync.js';
 import { stackedBars, balanceBars, legend } from './charts.js';
 import { workbookSheets, fileSlug } from './reports.js';
 import { buildXlsx } from './xlsx.js';
@@ -53,6 +54,7 @@ function flushSave() {
     const env = await seal(session, snapshot);
     await saveVault(env);
     setSaveIndicator('saved');
+    if (sync.code) scheduleSync(800);
   }).catch((e) => {
     console.error(e);
     dirty = true;
@@ -67,6 +69,264 @@ function setSaveIndicator(st) {
   if (!el) return;
   el.dataset.state = st;
   el.textContent = st === 'saving' ? 'Guardando…' : st === 'error' ? 'Error al guardar' : 'Guardado';
+  el.append(syncBadge());
+}
+
+// ---------------------------------------------------------------------------
+// Sincronización en vivo con otro dispositivo (opcional)
+
+const sync = { code: null, rev: 0, base: null, busy: false, again: false, timer: null, status: 'off', force: false, askedPass: false };
+const shared = (st) => { const o = { ...st }; delete o.sync; return o; };
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+function syncBadge() {
+  if (!sync.code) return '';
+  const t = { ok: ' · en vivo ✓', working: ' · sincronizando…', offline: ' · sin conexión', needpass: ' · falta contraseña' }[sync.status] || '';
+  return h('span', { class: 'sync-' + sync.status }, t);
+}
+function setSync(st) {
+  if (sync.status === st) return;
+  sync.status = st;
+  const el = document.getElementById('save-state');
+  if (el) { el.querySelectorAll('span').forEach((x) => x.remove()); el.append(syncBadge()); }
+}
+
+function scheduleSync(ms) {
+  clearTimeout(sync.timer);
+  sync.timer = setTimeout(() => syncNow(), ms);
+}
+
+async function syncStart() {
+  sync.code = app.state.sync && isCode(app.state.sync.code) && syncConfigured() ? app.state.sync.code : null;
+  sync.rev = 0; sync.base = null; sync.askedPass = false; sync.status = 'off';
+  if (!sync.code) return;
+  setSync('working');
+  try {
+    const rec = await loadSync();
+    if (rec && rec.code === sync.code && rec.base) {
+      sync.base = normalizeState(await openWith(app.session, rec.base));
+      sync.rev = rec.rev;
+    }
+  } catch { sync.base = null; sync.rev = 0; }
+  syncNow();
+}
+
+function hasLocalChanges() {
+  return sync.force || !sync.base || !same(shared(app.state), sync.base);
+}
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+function isEditing() {
+  const a = document.activeElement;
+  return pointerDown || !!document.querySelector('dialog[open]')
+    || (!!a && root.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox');
+}
+
+/** Sube los cambios locales y trae los del otro dispositivo. Una sola a la vez. */
+async function syncNow() {
+  if (!app.state || !sync.code || !app.session) return;
+  if (sync.busy) { sync.again = true; return; }
+  sync.busy = true;
+  try {
+    await flushSave();
+    for (let i = 0; i < 4 && app.state && sync.code; i++) {
+      const rrev = await remoteRev(sync.code);
+      if (rrev !== sync.rev) {
+        const r = await pullMerge();
+        if (r === 'wait') { setSync('ok'); scheduleSync(2000); break; }
+        if (r === 'stop') break;
+      }
+      if (!hasLocalChanges()) { setSync('ok'); break; }
+      const snap = clone(shared(app.state));
+      const env = await seal(app.session, snap);
+      const nr = await remotePut(sync.code, sync.rev, env);
+      if (nr > 0) {
+        sync.rev = nr; sync.base = snap; sync.force = false;
+        await saveSync({ code: sync.code, rev: nr, base: env });
+        setSync('ok');
+        break;
+      }
+      // -1: el otro dispositivo guardó antes; se vuelve a traer y combinar
+    }
+  } catch (e) {
+    console.warn('sync', e);
+    setSync('offline');
+  } finally {
+    sync.busy = false;
+    if (sync.again) { sync.again = false; scheduleSync(300); }
+  }
+}
+
+async function pullMerge() {
+  if (isEditing()) return 'wait';
+  const r = await remoteGet(sync.code);
+  if (!r) { sync.rev = 0; sync.base = null; return 'ok'; } // se volverá a crear al subir
+  let data;
+  try { data = await openWith(app.session, r.env); } catch { askRemotePassword(r.env); return 'stop'; }
+  const remote = normalizeState(data);
+  if (isEditing()) return 'wait';
+  const local = shared(app.state);
+  const merged = !hasLocalChanges() ? remote : normalizeState({ ...merge3(sync.base || undefined, local, remote), v: remote.v });
+  if (app.state.sync) merged.sync = app.state.sync;
+  const changed = !same(shared(merged), local);
+  sync.base = clone(shared(remote)); sync.rev = r.rev;
+  await saveSync({ code: sync.code, rev: r.rev, base: r.env });
+  if (changed) {
+    app.state = merged;
+    app.virtual.clear();
+    dirty = true;
+    await flushSave();
+    applyTheme(app.state.settings.theme);
+    scheduleRender();
+  }
+  return 'ok';
+}
+
+/** El otro dispositivo cambió la contraseña: pedir la nueva una vez. */
+async function askRemotePassword(env) {
+  setSync('needpass');
+  if (sync.askedPass) return;
+  sync.askedPass = true;
+  const v = await formSheet({
+    title: 'Contraseña nueva',
+    fields: [
+      { type: 'note', name: 'n', label: 'La contraseña se cambió en el otro móvil. Escríbela para seguir sincronizando. Desde ahora será también la contraseña de este móvil.' },
+      { name: 'pass', label: 'Contraseña nueva', type: 'password', required: true, autofocus: true },
+    ],
+    submitLabel: 'Continuar',
+  });
+  if (!v || v === 'delete') return;
+  try {
+    const { session } = await open(env, v.pass);
+    app.session = session;
+    sync.askedPass = false;
+    dirty = true;
+    await flushSave();
+    toast('Contraseña actualizada');
+    syncNow();
+  } catch {
+    toast('Contraseña incorrecta', 'error');
+    sync.askedPass = false;
+  }
+}
+
+async function enableSharing() {
+  const ok = await choose({
+    title: 'Compartir en vivo',
+    message: ['Tus datos se subirán CIFRADOS con tu contraseña al servidor de la app. Nadie puede leerlos sin ella, tampoco el servidor.',
+      'Luego envías el código de invitación a tu pareja. Ella instala la app, toca «Unirme con un código» y escribe vuestra contraseña.'],
+    buttons: [{ label: 'Activar', value: true, class: 'primary' }, { label: 'Cancelar', value: null, class: 'ghost' }],
+  });
+  if (!ok) return;
+  const code = newCode();
+  try {
+    toast('Conectando…');
+    await flushSave();
+    const snap = clone(shared(app.state));
+    const env = await seal(app.session, snap);
+    const rev = await remotePut(code, 0, env);
+    if (!(rev > 0)) throw new Error('rev');
+    await saveSync({ code, rev, base: env });
+    app.state.sync = { code };
+    sync.code = code; sync.rev = rev; sync.base = snap; sync.status = 'ok';
+    dirty = true;
+    await flushSave();
+  } catch (e) {
+    console.warn(e);
+    toast('No se pudo conectar con el servidor. Revisa la conexión.', 'error');
+    return;
+  }
+  render();
+  showInvite();
+}
+
+function inviteText() {
+  return `Te invito a nuestras finanzas compartidas.\n1) Abre ${location.origin}${location.pathname} e instala la app (Añadir a pantalla de inicio).\n2) Ábrela desde el icono y toca «Unirme con un código».\n3) Pega este código:\n${sync.code}\n(La contraseña te la digo en persona.)`;
+}
+
+function showInvite() {
+  const text = inviteText();
+  infoSheet('Invitar a tu pareja', [
+    h('p', null, 'Envíale este mensaje. La contraseña dísela en persona o por otro medio: nunca junto al código.'),
+    h('pre', { class: 'invite' }, text),
+    h('div', { class: 'row-actions' },
+      navigator.share ? h('button', { class: 'btn primary', onclick: () => navigator.share({ text }).catch(() => {}) }, 'Compartir…') : null,
+      h('button', { class: 'btn ghost', onclick: () => navigator.clipboard.writeText(text).then(() => toast('Copiado'), () => toast('No se pudo copiar', 'error')) }, 'Copiar')),
+  ]);
+}
+
+/** Unirse a las finanzas compartidas. fromSetup: dispositivo sin datos todavía. */
+async function joinShared(fromSetup) {
+  if (!syncConfigured()) { toast('La sincronización aún no está configurada', 'error'); return; }
+  const v = await formSheet({
+    title: 'Unirme con un código',
+    fields: [
+      { type: 'note', name: 'n', label: 'Pega el mensaje o el código que te envió tu pareja y escribe la contraseña de la app compartida.' },
+      { name: 'code', label: 'Código de invitación', type: 'textarea', required: true, autofocus: true },
+      { name: 'pass', label: 'Contraseña', type: 'password', required: true },
+    ],
+    submitLabel: 'Unirme',
+    validate: (x) => (extractCode(x.code) ? null : 'No encuentro un código válido en el texto.'),
+  });
+  if (!v || v === 'delete') return;
+  const code = extractCode(v.code);
+  let r;
+  try { toast('Conectando…'); r = await remoteGet(code); } catch { toast('No se pudo conectar. Revisa la conexión.', 'error'); return; }
+  if (!r) { toast('No existe ese código. Pide uno nuevo.', 'error'); return; }
+  let opened;
+  try { opened = await open(r.env, v.pass); } catch { toast('Contraseña incorrecta', 'error'); return; }
+  let data;
+  try { data = normalizeState(opened.data); } catch { toast('Los datos compartidos no son válidos', 'error'); return; }
+  if (!fromSetup) {
+    const ok = await choose({
+      title: '¿Usar las finanzas compartidas?',
+      message: ['Los datos de este móvil se sustituirán por los compartidos, y la contraseña pasará a ser la compartida.', 'Si quieres conservarlos, descarga antes una copia.'],
+      buttons: [{ label: 'Unirme', value: true, class: 'danger' }, { label: 'Cancelar', value: null, class: 'ghost' }],
+    });
+    if (!ok) return;
+  }
+  await saveSync({ code, rev: r.rev, base: r.env });
+  data.sync = { code };
+  app.session = opened.session;
+  app.state = data;
+  app.virtual.clear();
+  dirty = true;
+  await flushSave();
+  if (fromSetup) requestPersistence();
+  toast('¡Listo! Ya compartís las finanzas en vivo');
+  startSessionUi();
+}
+
+async function stopSharing() {
+  const ok = await confirmDanger('¿Dejar de sincronizar este móvil?', 'Los datos se quedan en este móvil, pero dejarán de recibir y enviar cambios. El otro móvil sigue igual.', 'Dejar de sincronizar');
+  if (!ok) return;
+  delete app.state.sync;
+  sync.code = null; sync.status = 'off';
+  await saveSync(null);
+  dirty = true;
+  await flushSave();
+  render();
+}
+
+function syncCard(st) {
+  const on = !!(st.sync && sync.code);
+  const statusText = { ok: '✓ Sincronizado en vivo', working: 'Sincronizando…', offline: 'Sin conexión: los cambios se enviarán al recuperarla', needpass: 'Falta la contraseña nueva' }[sync.status] || '';
+  return h('section', { class: 'card' },
+    h('h2', null, 'Compartir en vivo'),
+    !syncConfigured()
+      ? h('p', { class: 'muted small' }, 'Pendiente de configurar el servidor de sincronización.')
+      : on
+        ? [h('p', { class: 'small' + (sync.status === 'ok' ? ' ok' : '') }, statusText),
+          h('p', { class: 'muted small' }, 'Los cambios de cualquiera de los dos móviles aparecen en el otro en unos segundos. Viajan y se guardan cifrados con vuestra contraseña.'),
+          h('div', { class: 'row-actions' },
+            h('button', { class: 'btn primary', onclick: showInvite }, 'Invitar'),
+            sync.status === 'needpass' ? h('button', { class: 'btn', onclick: () => { sync.askedPass = false; syncNow(); } }, 'Escribir contraseña') : null,
+            h('button', { class: 'btn ghost', onclick: stopSharing }, 'Dejar de sincronizar'))]
+        : [h('p', { class: 'muted small' }, 'Comparte estas finanzas con tu pareja: los dos veréis y podréis cambiar lo mismo, en vivo. Los datos se guardan cifrados con vuestra contraseña.'),
+          h('div', { class: 'row-actions' },
+            h('button', { class: 'btn primary', onclick: enableSharing }, 'Activar y compartir'),
+            h('button', { class: 'btn ghost', onclick: () => joinShared(false) }, 'Unirme con un código'))],
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +391,7 @@ function shell() {
         h('button', { class: 'icon-btn', 'aria-label': 'Mes siguiente', onclick: () => goMonth(1) }, '›'),
       ),
       h('div', { class: 'top-actions' },
-        h('span', { id: 'save-state', 'data-state': 'saved' }, 'Guardado'),
+        h('span', { id: 'save-state', 'data-state': 'saved' }, 'Guardado', syncBadge()),
         h('button', { class: 'icon-btn', 'aria-label': 'Bloquear', title: 'Bloquear', onclick: () => lock() }, iconLock()),
         h('button', { class: 'icon-btn' + (app.tab === 'ajustes' ? ' active' : ''), 'aria-label': 'Ajustes', title: 'Ajustes', onclick: () => setTab('ajustes') }, iconGear()),
       ),
@@ -803,9 +1063,10 @@ function viewSettings() {
     h('button', { class: 'btn small ghost', onclick: () => editTemplate(kind, null) }, '+ Añadir'));
 
   return h('div', { class: 'stack' },
+    syncCard(st),
     h('section', { class: 'card' },
       h('h2', null, 'Seguridad'),
-      h('p', { class: 'muted small' }, 'Tus datos se guardan cifrados (AES-256) sólo en este dispositivo. La contraseña no se guarda en ningún sitio.'),
+      h('p', { class: 'muted small' }, st.sync ? 'Tus datos se guardan cifrados (AES-256) en este dispositivo y, para compartirlos, en el servidor. La contraseña no se guarda en ningún sitio.' : 'Tus datos se guardan cifrados (AES-256) sólo en este dispositivo. La contraseña no se guarda en ningún sitio.'),
       h('label', { class: 'form-row inline' }, h('span', { class: 'form-label' }, 'Bloqueo automático tras'),
         h('select', { onchange: (e) => mutateState((s) => { s.settings.autoLockMin = Number(e.target.value); }) },
           [1, 2, 5, 10, 15, 30].map((n) => h('option', { value: n, selected: st.settings.autoLockMin === n }, `${n} min sin uso`)))),
@@ -847,7 +1108,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.4 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.5 · funciona sin conexión'),
   );
 }
 
@@ -887,7 +1148,7 @@ function installHelp() {
 async function exportBackup() {
   await flushSave();
   app.state.meta.lastBackup = Date.now();
-  const env = await seal(app.session, app.state);
+  const env = await seal(app.session, shared(app.state));
   queueSave();
   const d = todayISO();
   await saveFile(new Blob([JSON.stringify(env)], { type: 'application/json' }), `finanzas-copia-cifrada-${d}.json`);
@@ -936,6 +1197,7 @@ async function importBackup(fromSetup) {
       buttons: [{ label: 'Reemplazar', value: true, class: 'danger' }, { label: 'Cancelar', value: null, class: 'ghost' }],
     });
     if (!ok) return;
+    if (app.state.sync) data.sync = app.state.sync;
     app.state = data;
   } else {
     app.state = data;
@@ -966,9 +1228,10 @@ async function changePassword() {
   await flushSave();
   try { await open(await loadVault(), v.old); } catch { toast('La contraseña actual no es correcta', 'error'); return; }
   app.session = await createSession(v.p1);
+  sync.force = true;
   dirty = true;
   await flushSave();
-  toast('Contraseña cambiada. Descarga una copia nueva: las anteriores siguen usando la contraseña antigua.');
+  toast(sync.code ? 'Contraseña cambiada. En el otro móvil os la pedirá la próxima vez.' : 'Contraseña cambiada. Descarga una copia nueva: las anteriores siguen usando la contraseña antigua.');
 }
 
 async function wipeAll() {
@@ -989,8 +1252,10 @@ async function wipeAll() {
 async function lock() {
   if (!app.state) return;
   await flushSave();
+  if (sync.code && !sync.busy) await syncNow();
   app.state = null;
   app.session = null;
+  sync.code = null; sync.status = 'off'; clearTimeout(sync.timer);
   app.virtual.clear();
   document.querySelectorAll('dialog').forEach((d) => d.close());
   showLock();
@@ -1105,6 +1370,7 @@ function showSetup() {
     h('p', null, 'Crea una contraseña para cifrar tus datos en este dispositivo.'),
     h('p', { class: 'muted small' }, 'Importante: no se puede recuperar si la olvidas. Guarda copias de seguridad desde Ajustes.'),
     form,
+    syncConfigured() ? h('button', { class: 'btn block', onclick: () => joinShared(true) }, 'Unirme a las finanzas de mi pareja (código)') : null,
     h('button', { class: 'link', onclick: () => importBackup(true) }, 'Tengo una copia de seguridad (cambio de teléfono)'),
   ]);
   setTimeout(() => p1.focus(), 50);
@@ -1114,6 +1380,7 @@ function startSessionUi() {
   app.lastActivity = Date.now();
   applyTheme(app.state.settings.theme);
   render();
+  syncStart();
 }
 
 // Bloqueo automático por inactividad o al volver tras un tiempo en segundo plano
@@ -1121,9 +1388,12 @@ function startSessionUi() {
 setInterval(() => {
   if (app.state && Date.now() - app.lastActivity > app.state.settings.autoLockMin * 60000) lock();
 }, 10000);
+// Comprobar cambios del otro dispositivo cada pocos segundos mientras la app está a la vista
+setInterval(() => { if (sync.code && document.visibilityState === 'visible') syncNow(); }, 5000);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') { flushSave(); app.hiddenAt = Date.now(); return; }
+  if (document.visibilityState === 'hidden') { flushSave().then(() => { if (sync.code) syncNow(); }); app.hiddenAt = Date.now(); return; }
   if (app.state && app.hiddenAt && Date.now() - app.hiddenAt > app.state.settings.autoLockMin * 60000) lock();
+  else if (sync.code) syncNow();
   app.hiddenAt = null;
 });
 window.addEventListener('pagehide', () => { flushSave(); });
@@ -1175,4 +1445,4 @@ if (!globalThis.crypto || !globalThis.crypto.subtle || !window.indexedDB) {
 }
 
 // Exponer para pruebas automáticas (no contiene datos).
-window.__finanzas = { get unlocked() { return !!app.state; } };
+window.__finanzas = { get unlocked() { return !!app.state; }, get sync() { return { rev: sync.rev, status: sync.status, busy: sync.busy, pending: app.state && sync.code ? hasLocalChanges() : null }; } };

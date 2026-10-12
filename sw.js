@@ -1,10 +1,10 @@
 // Service worker: guarda la app en caché para abrirla sin conexión.
-// No toca los datos (están cifrados en IndexedDB) ni hace peticiones externas.
-const VERSION = 'finanzas-v1.4.0';
+// No toca los datos (están cifrados en IndexedDB) ni intercepta peticiones a otros dominios (sincronización).
+const VERSION = 'finanzas-v1.5.0';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/calc.js', 'js/charts.js', 'js/crypto.js', 'js/dom.js', 'js/model.js', 'js/money.js',
-  'js/pdf.js', 'js/reports.js', 'js/store.js', 'js/xlsx.js',
+  'js/app.js', 'js/calc.js', 'js/charts.js', 'js/config.js', 'js/crypto.js', 'js/dom.js', 'js/model.js', 'js/money.js',
+  'js/pdf.js', 'js/reports.js', 'js/store.js', 'js/sync.js', 'js/xlsx.js',
   'vendor/jspdf.umd.min.js', 'vendor/jspdf.plugin.autotable.min.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png',
 ];

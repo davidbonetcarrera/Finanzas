@@ -42,6 +42,18 @@ export function saveVault(env) {
   return tx('readwrite', (s) => { s.put(env, VAULT_KEY); });
 }
 
+// Estado de la sincronización: { code, rev, base } (base = último sobre cifrado común)
+export function loadSync() {
+  return tx('readonly', (s) => new Promise((res, rej) => {
+    const r = s.get('sync');
+    r.onsuccess = () => res(r.result || null);
+    r.onerror = () => rej(r.error);
+  }));
+}
+export function saveSync(rec) {
+  return tx('readwrite', (s) => { if (rec) s.put(rec, 'sync'); else s.delete('sync'); });
+}
+
 export function wipeVault() {
   return tx('readwrite', (s) => { s.clear(); });
 }

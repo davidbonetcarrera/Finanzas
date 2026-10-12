@@ -372,3 +372,9 @@ dialog::backdrop { background: rgb(10 6 4 / 0.6); }
   .amt { width: 124px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Compartir en vivo */
+#save-state .sync-ok { color: var(--olive); }
+#save-state .sync-offline, #save-state .sync-needpass { color: var(--warn); }
+pre.invite { white-space: pre-wrap; word-break: break-all; font-size: .85rem; background: var(--surface-2); padding: .75rem; border-radius: 10px; user-select: all; -webkit-user-select: all; }
+.lock .btn.block + .link { margin-top: .25rem; }

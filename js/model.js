@@ -196,6 +196,8 @@ export function normalizeState(raw) {
   s.templates.fixed = arr(raw.templates.fixed, 200).map((t) => normTpl(t));
   s.templates.baby = arr(raw.templates.baby, 200).map((t) => normTpl(t));
   s.templates.savings = arr(raw.templates.savings, 200).map((t) => normTpl(t));
+  // Código del hogar para la sincronización (sólo en este dispositivo; no se sincroniza)
+  if (raw.sync && typeof raw.sync.code === 'string' && /^[A-Za-z0-9_-]{43}$/.test(raw.sync.code)) s.sync = { code: raw.sync.code };
   s.months = Object.create(null);
   for (const k of Object.keys(raw.months)) {
     if (!isValidKey(k)) continue;
