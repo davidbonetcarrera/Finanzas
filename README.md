@@ -102,6 +102,17 @@ Totales → «Exportar informe» → **Descargar PDF** o **Descargar Excel**. Se
 - **Restaurar en el mismo teléfono:** Ajustes → «Restaurar copia» (reemplaza los datos actuales y conserva tu contraseña actual).
 - Si cambias la contraseña, las copias antiguas siguen abriéndose con la contraseña antigua. Haz una copia nueva.
 
+## 6b. Compartir en vivo con tu pareja
+
+En **Ajustes → Compartir en vivo → Activar y compartir**, tus datos se suben **cifrados con tu contraseña** al servidor de sincronización (Supabase). Luego tocas **Invitar** y envías el mensaje con el código. La otra persona instala la app, toca **«Unirme a las finanzas de mi pareja (código)»**, pega el mensaje y escribe la contraseña. **Dile la contraseña en persona**, nunca junto al código.
+
+- Los cambios de cualquiera de los dos aparecen en el otro móvil en unos 5 segundos mientras la app está abierta.
+- Si los dos cambiáis cosas distintas a la vez, se conservan ambas. Si cambiáis el mismo dato, gana el último móvil en guardar.
+- Sin conexión se sigue usando con normalidad; los cambios se envían al recuperarla.
+- Si uno cambia la contraseña, al otro se le pedirá la nueva.
+- El servidor sólo guarda datos cifrados y las 30 últimas versiones (para recuperar si algo sale mal). Sin la contraseña nadie puede leerlos, tampoco Supabase.
+- El servidor se configura con `supabase/setup.sql` y `js/config.js` (dirección y clave pública).
+
 ## 7. Seguridad aplicada
 
 - Cifrado AES‑256‑GCM con autenticación (detecta archivos manipulados) y clave PBKDF2 de 600.000 iteraciones con sal aleatoria. La clave no es exportable y sólo vive en memoria mientras la app está desbloqueada.
