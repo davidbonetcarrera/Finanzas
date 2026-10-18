@@ -305,3 +305,29 @@ test('reembolsos: el pago ya está en gastos; al cobrarlo se suma al saldo', asy
   const raw = JSON.parse(JSON.stringify(s)); delete raw.months['2026-11'].reimb;
   assert.deepEqual(normalizeState(raw).months['2026-11'].reimb, []);
 });
+
+test('horas: se leen en varios formatos, se convierten a dinero y no cuentan en los totales', async () => {
+  const { parseHours, fmtHours, hoursMoney, newHours } = await import('../js/model.js');
+  assert.equal(parseHours('3'), 180);
+  assert.equal(parseHours('2.5'), 150);
+  assert.equal(parseHours('2,5'), 150);
+  assert.equal(parseHours('2:30'), 150);
+  assert.equal(parseHours('1h15'), 75);
+  assert.equal(parseHours('0'), null);
+  assert.equal(parseHours('25'), null);
+  assert.equal(parseHours('2:75'), null);
+  assert.equal(parseHours('hola'), null);
+  assert.equal(fmtHours(150), '2 h 30 min');
+  assert.equal(hoursMoney(150, 2000), 5000);
+  const s = newState();
+  const m = ensureMonth(s, '2026-10');
+  m.incomes.push(newIncome({ amount: 100000 }));
+  m.hours.push(newHours({ date: '2026-10-05', minutes: 240 }));
+  m.hourRate = 1500;
+  const c = monthCalc(m);
+  assert.equal(c.income, 100000);
+  assert.equal(c.balance, 100000);
+  const n = normalizeState(JSON.parse(JSON.stringify(s)));
+  assert.equal(n.months['2026-10'].hours[0].minutes, 240);
+  assert.equal(n.months['2026-10'].hourRate, 1500);
+});

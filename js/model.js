@@ -35,7 +35,7 @@ export function uid() {
 export function newState() {
   return {
     v: SCHEMA_VERSION,
-    settings: { autoLockMin: 5, theme: 'dark', carryAmounts: true },
+    settings: { autoLockMin: 5, theme: 'dark', carryAmounts: true, hourRate: 0 },
     meta: { created: Date.now(), lastBackup: null },
     templates: {
       income: [],
@@ -76,6 +76,26 @@ export function newItem({ name = '', mode = 'direct', amount = 0, budget = 0, tp
 export function newTx({ date = '', desc = '', amount = 0, paid = false } = {}) {
   return { id: uid(), date, desc, amount, paid };
 }
+// Horas trabajadas aparte: sólo un contador informativo (no cuenta en ningún total).
+export function newHours({ date = '', minutes = 0, desc = '' } = {}) {
+  return { id: uid(), date, minutes, desc };
+}
+
+/** "2:30", "2.5", "2,5", "2h30", "3" -> minutos (null si no es válido). */
+export function parseHours(text) {
+  const t = String(text || '').trim().toLowerCase().replace(/\s+/g, '');
+  let m = t.match(/^(\d{1,2})(?::|h)(\d{1,2})?(?:m|min)?$/);
+  let min = null;
+  if (m) { if (m[2] !== undefined && Number(m[2]) > 59) return null; min = Number(m[1]) * 60 + Number(m[2] || 0); }
+  else if ((m = t.match(/^(\d{1,2})(?:[.,](\d{1,2}))?h?$/))) min = Math.round(Number(m[1] + '.' + (m[2] || '0')) * 60);
+  return min !== null && min > 0 && min <= 24 * 60 ? min : null;
+}
+export function fmtHours(minutes) {
+  const h = Math.floor(minutes / 60), m = minutes % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+export const hoursMoney = (minutes, rate) => Math.round((minutes * rate) / 60);
+
 export function newIncome({ name = '', amount = 0, date = '', notes = '', tpl = null } = {}) {
   return { id: uid(), tpl, name, amount, date, notes };
 }
@@ -114,6 +134,8 @@ export function buildMonth(state, key) {
     savings: (state.templates.savings || []).map((t) => carry(t, prev && prev.savings)),
     budgetsClosed: false,
     reimb: [],
+    hours: [],
+    hourRate: 0,
   };
 }
 
@@ -189,6 +211,7 @@ export function normalizeState(raw) {
   s.settings.autoLockMin = [1, 2, 5, 10, 15, 30].includes(set.autoLockMin) ? set.autoLockMin : 5;
   s.settings.theme = set.theme === 'light' ? 'light' : 'dark';
   s.settings.carryAmounts = set.carryAmounts !== false;
+  s.settings.hourRate = Math.max(0, cents(set.hourRate));
   const meta = raw.meta || {};
   s.meta.created = Number.isFinite(meta.created) ? meta.created : Date.now();
   s.meta.lastBackup = Number.isFinite(meta.lastBackup) ? meta.lastBackup : null;
@@ -212,6 +235,8 @@ export function normalizeState(raw) {
       savings: arr(m.savings).map(normItem),
       budgetsClosed: bool(m.budgetsClosed),
       reimb: arr(m.reimb).map(normItem),
+      hours: arr(m.hours).map((x) => { x = x || {}; return { id: id(x.id), date: date(x.date), minutes: Math.max(0, Math.min(1440, Math.round(Number(x.minutes) || 0))), desc: str(x.desc, 120) }; }),
+      hourRate: Math.max(0, cents(m.hourRate)),
     };
   }
   return s;

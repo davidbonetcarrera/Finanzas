@@ -133,6 +133,16 @@ export function workbookSheets(state, keys, now = new Date()) {
   }
   sheets.push({ name: 'Reembolsos', rows: rb, header: 0, filter: true, widths: [10, 26, 20, 12, 14, 12, 12, 14, 30] });
 
+  // --- Horas (informativo; no cuenta en los totales) ---
+  const hr = [['Mes', 'Día', 'Descripción', 'Horas', 'Tarifa por hora', 'Importe']];
+  for (const m of r.months) {
+    const rate = m.month ? (m.month.hourRate || state.settings.hourRate || 0) : 0;
+    for (const x of [...((m.month && m.month.hours) || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''))) {
+      hr.push([m.key, x.date, x.desc, { v: Math.round((x.minutes / 60) * 100) / 100 }, rate ? M(rate) : null, rate ? M(Math.round((x.minutes * rate) / 60)) : null]);
+    }
+  }
+  if (hr.length > 1) sheets.push({ name: 'Horas', rows: hr, header: 0, filter: true, widths: [10, 12, 30, 10, 16, 14] });
+
   // --- Transacciones ---
   const tx = [['Mes', 'Categoría', 'Partida', 'Fecha', 'Descripción', 'Importe', 'Pagado']];
   for (const m of r.months) for (const cat of [...m.cats, m.savings]) for (const it of cat.items) for (const x of it.tx) {

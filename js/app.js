@@ -3,7 +3,7 @@ import { h, formSheet, choose, confirmDanger, infoSheet, toast, saveFile, pickFi
 import { fmt, toInput, parseAmount } from './money.js';
 import {
   CATS, SAVINGS, REIMB, MONTH_NAMES, newState, monthKey, parseKey, shiftKey, keyLabel, yearKeys, newItem, newTx, newIncome,
-  viewMonth, ensureMonth, latestBefore, normalizeState, uid,
+  viewMonth, ensureMonth, latestBefore, normalizeState, uid, newHours, parseHours, fmtHours, hoursMoney,
 } from './model.js';
 import { itemCalc, monthCalc, periodCalc, closeBudgets, reopenBudgets, pendingReimbBefore } from './calc.js';
 import { createSession, seal, open, openWith, isEnvelope, MIN_PASSPHRASE } from './crypto.js';
@@ -468,7 +468,67 @@ function viewIncomes(m, c) {
         )))),
       h('button', { class: 'btn add', onclick: () => editIncome(null) }, '+ Añadir ingreso'),
     ),
+    hoursSection(m),
   );
+}
+
+// HORAS: contador informativo de horas trabajadas aparte (no cuenta en los totales)
+const monthRate = (m) => m.hourRate || app.state.settings.hourRate || 0;
+
+function hoursSection(m) {
+  const list = [...(m.hours || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const rate = monthRate(m);
+  const total = list.reduce((a, x) => a + x.minutes, 0);
+  return h('section', { class: 'card hours' },
+    h('div', { class: 'card-head' }, h('h2', null, 'Horas'), h('b', { class: 'big' }, rate ? fmt(hoursMoney(total, rate)) : fmtHours(total))),
+    h('p', { class: 'muted small' }, 'Sólo para llevar la cuenta de lo que hay que cobrar. No se suma a los ingresos ni cambia el saldo.'),
+    h('button', { class: 'row-btn rate', onclick: () => editRate(m) },
+      h('span', { class: 'row-main' }, h('span', { class: 'row-name' }, 'Tarifa por hora'), h('small', null, rate ? 'toca para cambiarla' : 'toca para indicarla')),
+      h('span', { class: 'amount' }, rate ? `${fmt(rate)}/h` : '—')),
+    list.length === 0 ? h('p', { class: 'empty' }, 'Sin horas este mes. Añade las de cada día.') : null,
+    h('ul', { class: 'rows' }, list.map((x) => h('li', null,
+      h('button', { class: 'row-btn', onclick: () => editHours(x) },
+        h('span', { class: 'row-main' }, h('span', { class: 'row-name' }, x.date ? shortDate(x.date) : 'Sin fecha'),
+          h('small', null, [fmtHours(x.minutes), x.desc || null].filter(Boolean).join(' · '))),
+        h('span', { class: 'amount muted' }, rate ? fmt(hoursMoney(x.minutes, rate)) : fmtHours(x.minutes)))))),
+    list.length ? h('p', { class: 'hours-total' }, h('span', null, `Total: ${fmtHours(total)}`), rate ? h('b', null, `${fmt(hoursMoney(total, rate))} por cobrar`) : null) : null,
+    h('button', { class: 'btn add', onclick: () => editHours(null) }, '+ Añadir horas'),
+  );
+}
+
+async function editRate(m) {
+  const v = await formSheet({
+    title: 'Tarifa por hora',
+    fields: [
+      { type: 'note', name: 'n', label: `Se usa en ${keyLabel(app.key)} y en los meses siguientes hasta que la cambies.` },
+      { name: 'rate', label: 'Importe por hora', type: 'amount', value: monthRate(m), autofocus: true },
+    ],
+  });
+  if (!v || v === 'delete') return;
+  mutate((mm) => { mm.hourRate = v.rate; app.state.settings.hourRate = v.rate; });
+}
+
+async function editHours(x) {
+  const v = await formSheet({
+    title: x ? 'Editar horas' : 'Añadir horas',
+    fields: [
+      { name: 'date', label: 'Día', type: 'date', value: x ? x.date : defaultDate() },
+      { name: 'hours', label: 'Horas', type: 'text', value: x ? (x.minutes % 60 ? `${Math.floor(x.minutes / 60)}:${String(x.minutes % 60).padStart(2, '0')}` : String(x.minutes / 60)) : '', required: true, autofocus: !x, placeholder: 'Ej.: 3, 2.5 o 2:30', inputmode: 'decimal' },
+      { name: 'desc', label: 'Descripción (opcional)', type: 'text', value: x ? x.desc : '' },
+    ],
+    deleteLabel: x ? 'Eliminar' : null,
+    submitLabel: x ? 'Guardar' : 'Añadir',
+    validate: (f) => (parseHours(f.hours) ? null : 'Escribe las horas como 3, 2.5 o 2:30 (máximo 24).'),
+  });
+  if (!v) return;
+  mutate((mm) => {
+    mm.hours = mm.hours || [];
+    if (v === 'delete') { mm.hours = mm.hours.filter((y) => y.id !== x.id); return; }
+    let t = x ? mm.hours.find((y) => y.id === x.id) : null;
+    if (!t) { t = newHours(); mm.hours.push(t); }
+    Object.assign(t, { date: v.date, minutes: parseHours(v.hours), desc: v.desc });
+    if (!mm.hourRate && app.state.settings.hourRate) mm.hourRate = app.state.settings.hourRate;
+  });
 }
 
 async function editIncome(inc) {
@@ -1108,7 +1168,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.5 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.6 · funciona sin conexión'),
   );
 }
 

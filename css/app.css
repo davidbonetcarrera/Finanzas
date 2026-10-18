@@ -378,3 +378,7 @@ dialog::backdrop { background: rgb(10 6 4 / 0.6); }
 #save-state .sync-offline, #save-state .sync-needpass { color: var(--warn); }
 pre.invite { white-space: pre-wrap; word-break: break-all; font-size: .85rem; background: var(--surface-2); padding: .75rem; border-radius: 10px; user-select: all; -webkit-user-select: all; }
 .lock .btn.block + .link { margin-top: .25rem; }
+
+/* Horas */
+.hours .row-btn.rate { border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.hours-total { display: flex; justify-content: space-between; gap: 8px; margin: 8px 0 0; font-size: .9rem; }

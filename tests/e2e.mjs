@@ -54,6 +54,18 @@ for (const [n, a] of [['Salario', '2500'], ['Extra', '500']]) {
   await submit();
 }
 assert.equal(await strip('Ingresos'), '$3,000.00');
+// 2b. Horas: contador informativo
+await page.locator('.hours').getByRole('button', { name: /Tarifa por hora/ }).click();
+await fill('Importe por hora', '20'); await submit();
+for (const [d, hh] of [['2:30', 'Diseño'], ['3', '']]) {
+  await page.getByRole('button', { name: '+ Añadir horas' }).click();
+  await fill('Horas', d); if (hh) await fill('Descripción', hh); await submit('Añadir');
+}
+const hrs = await page.locator('.hours').textContent();
+assert.match(hrs, /Total: 5 h 30 min/);
+assert.match(hrs, /\$110\.00 por cobrar/);
+assert.equal(await strip('Ingresos'), '$3,000.00', 'las horas no cuentan como ingreso');
+await page.screenshot({ path: OUT + '02b-horas.png', fullPage: true });
 
 // 3. Gastos fijos directos
 await page.getByRole('button', { name: 'Gastos', exact: true }).click();
