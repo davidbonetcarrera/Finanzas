@@ -306,28 +306,37 @@ test('reembolsos: el pago ya está en gastos; al cobrarlo se suma al saldo', asy
   assert.deepEqual(normalizeState(raw).months['2026-11'].reimb, []);
 });
 
-test('horas: se leen en varios formatos, se convierten a dinero y no cuentan en los totales', async () => {
-  const { parseHours, fmtHours, hoursMoney, newHours } = await import('../js/model.js');
+test('horas por empresa: formatos, dinero, no cuentan en totales, se mantienen al cambiar de mes y migran desde v1.6', async () => {
+  const { parseHours, fmtHours, hoursMoney, newHours, newJob, jobMinutes, buildMonth } = await import('../js/model.js');
   assert.equal(parseHours('3'), 180);
   assert.equal(parseHours('2.5'), 150);
   assert.equal(parseHours('2,5'), 150);
   assert.equal(parseHours('2:30'), 150);
   assert.equal(parseHours('1h15'), 75);
-  assert.equal(parseHours('0'), null);
-  assert.equal(parseHours('25'), null);
-  assert.equal(parseHours('2:75'), null);
-  assert.equal(parseHours('hola'), null);
+  for (const bad of ['0', '25', '2:75', 'hola']) assert.equal(parseHours(bad), null, bad);
   assert.equal(fmtHours(150), '2 h 30 min');
   assert.equal(hoursMoney(150, 2000), 5000);
   const s = newState();
   const m = ensureMonth(s, '2026-10');
   m.incomes.push(newIncome({ amount: 100000 }));
-  m.hours.push(newHours({ date: '2026-10-05', minutes: 240 }));
-  m.hourRate = 1500;
+  s.templates.jobs.push({ id: 'jb1', name: 'Steps', rate: 1500 });
+  const steps = newJob({ name: 'Steps', rate: 2000, tpl: 'jb1' });
+  steps.entries.push(newHours({ date: '2026-10-18', minutes: 180 }), newHours({ date: '2026-10-19', minutes: 150 }));
+  const tm = newJob({ name: 'Teresa Mann', rate: 0 });
+  tm.entries.push(newHours({ date: '2026-10-18', minutes: 60 }));
+  m.jobs.push(steps, tm);
+  assert.equal(jobMinutes(steps), 330);
   const c = monthCalc(m);
   assert.equal(c.income, 100000);
   assert.equal(c.balance, 100000);
+  const nov = buildMonth(s, '2026-11');
+  assert.deepEqual(nov.jobs.map((j) => [j.name, j.rate, j.entries.length]), [['Steps', 2000, 0]], 'la empresa se mantiene, vacía y con su tarifa');
   const n = normalizeState(JSON.parse(JSON.stringify(s)));
-  assert.equal(n.months['2026-10'].hours[0].minutes, 240);
-  assert.equal(n.months['2026-10'].hourRate, 1500);
+  assert.equal(n.months['2026-10'].jobs[0].entries.length, 2);
+  assert.equal(n.templates.jobs[0].name, 'Steps');
+  const old = JSON.parse(JSON.stringify(newState()));
+  old.settings.hourRate = 1000;
+  old.months['2026-09'] = { incomes: [], fixed: [], baby: [], general: [], hours: [{ id: 'a1', date: '2026-09-01', minutes: 120, desc: '' }], hourRate: 0 };
+  const mig = normalizeState(old).months['2026-09'].jobs;
+  assert.deepEqual(mig.map((j) => [j.name, j.rate, j.entries.length]), [['Horas', 1000, 1]]);
 });

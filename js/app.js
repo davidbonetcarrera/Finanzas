@@ -3,7 +3,7 @@ import { h, formSheet, choose, confirmDanger, infoSheet, toast, saveFile, pickFi
 import { fmt, toInput, parseAmount } from './money.js';
 import {
   CATS, SAVINGS, REIMB, MONTH_NAMES, newState, monthKey, parseKey, shiftKey, keyLabel, yearKeys, newItem, newTx, newIncome,
-  viewMonth, ensureMonth, latestBefore, normalizeState, uid, newHours, parseHours, fmtHours, hoursMoney,
+  viewMonth, ensureMonth, latestBefore, normalizeState, uid, newJob, newHours, jobMinutes, parseHours, fmtHours, hoursMoney,
 } from './model.js';
 import { itemCalc, monthCalc, periodCalc, closeBudgets, reopenBudgets, pendingReimbBefore } from './calc.js';
 import { createSession, seal, open, openWith, isEnvelope, MIN_PASSPHRASE } from './crypto.js';
@@ -472,48 +472,105 @@ function viewIncomes(m, c) {
   );
 }
 
-// HORAS: contador informativo de horas trabajadas aparte (no cuenta en los totales)
-const monthRate = (m) => m.hourRate || app.state.settings.hourRate || 0;
+// HORAS: contador informativo de horas trabajadas aparte, por empresa/cliente.
+// No cuenta en ningún total.
 
 function hoursSection(m) {
-  const list = [...(m.hours || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  const rate = monthRate(m);
-  const total = list.reduce((a, x) => a + x.minutes, 0);
+  const jobs = m.jobs || [];
+  const totalMoney = jobs.reduce((a, j) => a + hoursMoney(jobMinutes(j), j.rate), 0);
+  const totalMin = jobs.reduce((a, j) => a + jobMinutes(j), 0);
   return h('section', { class: 'card hours' },
-    h('div', { class: 'card-head' }, h('h2', null, 'Horas'), h('b', { class: 'big' }, rate ? fmt(hoursMoney(total, rate)) : fmtHours(total))),
-    h('p', { class: 'muted small' }, 'Sólo para llevar la cuenta de lo que hay que cobrar. No se suma a los ingresos ni cambia el saldo.'),
-    h('button', { class: 'row-btn rate', onclick: () => editRate(m) },
-      h('span', { class: 'row-main' }, h('span', { class: 'row-name' }, 'Tarifa por hora'), h('small', null, rate ? 'toca para cambiarla' : 'toca para indicarla')),
-      h('span', { class: 'amount' }, rate ? `${fmt(rate)}/h` : '—')),
-    list.length === 0 ? h('p', { class: 'empty' }, 'Sin horas este mes. Añade las de cada día.') : null,
-    h('ul', { class: 'rows' }, list.map((x) => h('li', null,
-      h('button', { class: 'row-btn', onclick: () => editHours(x) },
-        h('span', { class: 'row-main' }, h('span', { class: 'row-name' }, x.date ? shortDate(x.date) : 'Sin fecha'),
-          h('small', null, [fmtHours(x.minutes), x.desc || null].filter(Boolean).join(' · '))),
-        h('span', { class: 'amount muted' }, rate ? fmt(hoursMoney(x.minutes, rate)) : fmtHours(x.minutes)))))),
-    list.length ? h('p', { class: 'hours-total' }, h('span', null, `Total: ${fmtHours(total)}`), rate ? h('b', null, `${fmt(hoursMoney(total, rate))} por cobrar`) : null) : null,
-    h('button', { class: 'btn add', onclick: () => editHours(null) }, '+ Añadir horas'),
+    h('div', { class: 'card-head' }, h('h2', null, 'Horas'), h('b', { class: 'big' }, totalMoney ? fmt(totalMoney) : fmtHours(totalMin))),
+    h('p', { class: 'muted small' }, 'Para llevar la cuenta de lo que hay que cobrar. No se suma a los ingresos ni cambia el saldo.'),
+    jobs.length === 0 ? h('p', { class: 'empty' }, 'Añade una empresa o cliente (p. ej. «Steps») y dentro apunta las horas de cada día.') : null,
+    h('ul', { class: 'items' }, jobs.map(jobItem)),
+    jobs.length > 1 ? h('p', { class: 'hours-total' }, h('span', null, `Total: ${fmtHours(totalMin)}`), totalMoney ? h('b', null, `${fmt(totalMoney)} por cobrar`) : null) : null,
+    h('button', { class: 'btn add', onclick: () => editJob(null) }, '+ Añadir empresa'),
   );
 }
 
-async function editRate(m) {
-  const v = await formSheet({
-    title: 'Tarifa por hora',
-    fields: [
-      { type: 'note', name: 'n', label: `Se usa en ${keyLabel(app.key)} y en los meses siguientes hasta que la cambies.` },
-      { name: 'rate', label: 'Importe por hora', type: 'amount', value: monthRate(m), autofocus: true },
-    ],
-  });
-  if (!v || v === 'delete') return;
-  mutate((mm) => { mm.hourRate = v.rate; app.state.settings.hourRate = v.rate; });
+function jobItem(j) {
+  const k = 'job-' + j.id;
+  const isOpen = app.open.has(k);
+  const min = jobMinutes(j);
+  const days = new Set(j.entries.map((x) => x.date || x.id)).size;
+  return h('li', { class: 'item tx job' + (isOpen ? ' open' : '') },
+    h('button', { class: 'tx-head', 'aria-expanded': String(isOpen), onclick: () => { isOpen ? app.open.delete(k) : app.open.add(k); render(); } },
+      h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
+      h('span', { class: 'item-name' }, h('span', null, j.name || 'Sin nombre'),
+        h('small', null, `Total ${fmtHours(min)}`, days ? ` · ${days} día${days === 1 ? '' : 's'}` : '')),
+      h('span', { class: 'tx-amounts' }, h('b', null, j.rate ? fmt(hoursMoney(min, j.rate)) : fmtHours(min)), j.rate ? h('small', null, `${fmt(j.rate)}/h`) : null),
+    ),
+    isOpen ? h('div', { class: 'tx-body' },
+      h('label', { class: 'budget-row' }, h('span', null, 'Tarifa por hora'),
+        h('input', {
+          class: 'amt', type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '0.00', value: toInput(j.rate),
+          'data-fk': 'rate-' + j.id, enterkeyhint: 'done', 'aria-label': `Tarifa por hora de ${j.name}`,
+          onkeydown: (e) => { if (e.key === 'Enter') e.target.blur(); },
+          onchange: (e) => {
+            const v = parseAmount(e.target.value);
+            if (v === null || v < 0) { toast('Importe no válido', 'error'); e.target.value = toInput(j.rate); return; }
+            mutate((mm) => { const x = mm.jobs.find((y) => y.id === j.id); if (x) x.rate = v; });
+            if (j.tpl) mutateState((st) => { const t = st.templates.jobs.find((y) => y.id === j.tpl); if (t) t.rate = v; });
+          },
+        })),
+      j.entries.length === 0 ? h('p', { class: 'empty small' }, 'Sin horas todavía.') : null,
+      h('ul', { class: 'tx-list' }, [...j.entries].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((x) => h('li', null,
+        h('button', { class: 'tx-row', onclick: () => editHours(j, x) },
+          h('span', { class: 'tx-date' }, x.date ? shortDate(x.date) : '—'),
+          h('span', { class: 'tx-desc' }, fmtHours(x.minutes) + (x.desc ? ' · ' + x.desc : '')),
+          h('span', { class: 'amount' }, j.rate ? fmt(hoursMoney(x.minutes, j.rate)) : ''))))),
+      h('div', { class: 'tx-actions' },
+        h('button', { class: 'btn small primary', onclick: () => editHours(j, null) }, '+ Horas'),
+        h('button', { class: 'btn small ghost', onclick: () => editJob(j) }, 'Opciones'),
+      ),
+    ) : null,
+  );
 }
 
-async function editHours(x) {
+async function editJob(j) {
   const v = await formSheet({
-    title: x ? 'Editar horas' : 'Añadir horas',
+    title: j ? `Opciones · ${j.name}` : 'Nueva empresa o cliente',
+    fields: [
+      { name: 'name', label: 'Nombre', type: 'text', value: j ? j.name : '', required: true, autofocus: !j, placeholder: 'Steps, Teresa Mann…' },
+      { name: 'rate', label: 'Tarifa por hora (opcional)', type: 'amount', value: j ? j.rate : 0 },
+      { name: 'recurring', label: 'Mantenerla en los próximos meses', type: 'checkbox', value: j ? !!j.tpl : true, hint: 'Aparecerá vacía cada mes nuevo, con la misma tarifa.' },
+    ],
+    deleteLabel: j ? 'Eliminar' : null,
+    submitLabel: j ? 'Guardar' : 'Añadir',
+  });
+  if (!v) return;
+  if (v === 'delete') {
+    if (!(await confirmDanger('¿Eliminar empresa?', `«${j.name}» y sus ${fmtHours(jobMinutes(j))} se eliminarán de ${keyLabel(app.key)}.`))) return;
+    mutate((mm) => { mm.jobs = mm.jobs.filter((x) => x.id !== j.id); });
+    if (j.tpl) removeTemplate('jobs', j.tpl);
+    return;
+  }
+  const k = j ? null : uid();
+  mutate((mm) => {
+    mm.jobs = mm.jobs || [];
+    let t = j ? mm.jobs.find((x) => x.id === j.id) : null;
+    if (!t) { t = newJob(); t.id = k; mm.jobs.push(t); }
+    t.name = v.name; t.rate = v.rate || 0;
+    const tpls = app.state.templates.jobs;
+    if (v.recurring) {
+      let tp = t.tpl && tpls.find((x) => x.id === t.tpl);
+      if (!tp) { tp = { id: uid(), name: '', rate: 0 }; tpls.push(tp); t.tpl = tp.id; }
+      tp.name = t.name; tp.rate = t.rate;
+    } else if (t.tpl) {
+      app.state.templates.jobs = tpls.filter((x) => x.id !== t.tpl);
+      t.tpl = null;
+    }
+  });
+  if (k) app.open.add('job-' + k);
+}
+
+async function editHours(j, x) {
+  const v = await formSheet({
+    title: x ? `Editar horas · ${j.name}` : `Horas · ${j.name}`,
     fields: [
       { name: 'date', label: 'Día', type: 'date', value: x ? x.date : defaultDate() },
-      { name: 'hours', label: 'Horas', type: 'text', value: x ? (x.minutes % 60 ? `${Math.floor(x.minutes / 60)}:${String(x.minutes % 60).padStart(2, '0')}` : String(x.minutes / 60)) : '', required: true, autofocus: !x, placeholder: 'Ej.: 3, 2.5 o 2:30', inputmode: 'decimal' },
+      { name: 'hours', label: 'Horas', type: 'text', value: x ? (x.minutes % 60 ? `${Math.floor(x.minutes / 60)}:${String(x.minutes % 60).padStart(2, '0')}` : String(x.minutes / 60)) : '', required: true, autofocus: !x, placeholder: 'Ej.: 3, 2.5 o 2:30' },
       { name: 'desc', label: 'Descripción (opcional)', type: 'text', value: x ? x.desc : '' },
     ],
     deleteLabel: x ? 'Eliminar' : null,
@@ -522,12 +579,12 @@ async function editHours(x) {
   });
   if (!v) return;
   mutate((mm) => {
-    mm.hours = mm.hours || [];
-    if (v === 'delete') { mm.hours = mm.hours.filter((y) => y.id !== x.id); return; }
-    let t = x ? mm.hours.find((y) => y.id === x.id) : null;
-    if (!t) { t = newHours(); mm.hours.push(t); }
+    const job = mm.jobs.find((y) => y.id === j.id);
+    if (!job) return;
+    if (v === 'delete') { job.entries = job.entries.filter((y) => y.id !== x.id); return; }
+    let t = x ? job.entries.find((y) => y.id === x.id) : null;
+    if (!t) { t = newHours(); job.entries.push(t); }
     Object.assign(t, { date: v.date, minutes: parseHours(v.hours), desc: v.desc });
-    if (!mm.hourRate && app.state.settings.hourRate) mm.hourRate = app.state.settings.hourRate;
   });
 }
 
@@ -1168,7 +1225,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.6 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.7 · funciona sin conexión'),
   );
 }
 

@@ -54,16 +54,21 @@ for (const [n, a] of [['Salario', '2500'], ['Extra', '500']]) {
   await submit();
 }
 assert.equal(await strip('Ingresos'), '$3,000.00');
-// 2b. Horas: contador informativo
-await page.locator('.hours').getByRole('button', { name: /Tarifa por hora/ }).click();
-await fill('Importe por hora', '20'); await submit();
-for (const [d, hh] of [['2:30', 'Diseño'], ['3', '']]) {
-  await page.getByRole('button', { name: '+ Añadir horas' }).click();
-  await fill('Horas', d); if (hh) await fill('Descripción', hh); await submit('Añadir');
+// 2b. Horas por empresa: contador informativo
+for (const [name, rate] of [['Steps', '20'], ['Teresa Mann', '15']]) {
+  await page.getByRole('button', { name: '+ Añadir empresa' }).click();
+  await fill('Nombre', name); await fill('Tarifa por hora', rate); await submit('Añadir');
 }
-const hrs = await page.locator('.hours').textContent();
-assert.match(hrs, /Total: 5 h 30 min/);
-assert.match(hrs, /\$110\.00 por cobrar/);
+const addHours = async (job, d, desc) => {
+  const it = page.locator('.job', { hasText: job });
+  if (!(await it.locator('.tx-body').count())) await it.locator('.tx-head').click();
+  await it.getByRole('button', { name: '+ Horas' }).click();
+  await fill('Horas', d); if (desc) await fill('Descripción', desc); await submit('Añadir');
+};
+await addHours('Steps', '3', ''); await addHours('Steps', '2:30', 'Diseño'); await addHours('Teresa Mann', '2', '');
+assert.match(await page.locator('.job', { hasText: 'Steps' }).locator('.tx-head').textContent(), /Total 5 h 30 min.*\$110\.00/);
+assert.match(await page.locator('.job', { hasText: 'Teresa Mann' }).locator('.tx-head').textContent(), /Total 2 h.*\$30\.00/);
+assert.match(await page.locator('.hours .hours-total').textContent(), /Total: 7 h 30 min\$140\.00 por cobrar/);
 assert.equal(await strip('Ingresos'), '$3,000.00', 'las horas no cuentan como ingreso');
 await page.screenshot({ path: OUT + '02b-horas.png', fullPage: true });
 

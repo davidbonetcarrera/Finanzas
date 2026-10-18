@@ -35,13 +35,14 @@ export function uid() {
 export function newState() {
   return {
     v: SCHEMA_VERSION,
-    settings: { autoLockMin: 5, theme: 'dark', carryAmounts: true, hourRate: 0 },
+    settings: { autoLockMin: 5, theme: 'dark', carryAmounts: true },
     meta: { created: Date.now(), lastBackup: null },
     templates: {
       income: [],
       fixed: FIXED_SEED.map(([name, mode], i) => ({ id: 'fx' + (i + 1), name, mode, amount: 0, budget: 0 })),
       baby: [],
       savings: [],
+      jobs: [],
     },
     months: {},
   };
@@ -76,10 +77,15 @@ export function newItem({ name = '', mode = 'direct', amount = 0, budget = 0, tp
 export function newTx({ date = '', desc = '', amount = 0, paid = false } = {}) {
   return { id: uid(), date, desc, amount, paid };
 }
-// Horas trabajadas aparte: sólo un contador informativo (no cuenta en ningún total).
+// Horas trabajadas aparte, agrupadas por empresa/cliente: sólo un contador
+// informativo (no cuenta en ningún total).
+export function newJob({ name = '', rate = 0, tpl = null } = {}) {
+  return { id: uid(), tpl, name, rate, entries: [] };
+}
 export function newHours({ date = '', minutes = 0, desc = '' } = {}) {
   return { id: uid(), date, minutes, desc };
 }
+export const jobMinutes = (j) => j.entries.reduce((a, x) => a + x.minutes, 0);
 
 /** "2:30", "2.5", "2,5", "2h30", "3" -> minutos (null si no es válido). */
 export function parseHours(text) {
@@ -134,8 +140,10 @@ export function buildMonth(state, key) {
     savings: (state.templates.savings || []).map((t) => carry(t, prev && prev.savings)),
     budgetsClosed: false,
     reimb: [],
-    hours: [],
-    hourRate: 0,
+    jobs: (state.templates.jobs || []).map((t) => {
+      const p = prev && prev.jobs ? prev.jobs.find((j) => j.tpl === t.id) : null;
+      return newJob({ tpl: t.id, name: t.name, rate: p ? p.rate : (t.rate || 0) });
+    }),
   };
 }
 
@@ -191,6 +199,11 @@ function normItem(i) {
     paidDate: date(i.paidDate),
   };
 }
+const normEntry = (x) => { x = x || {}; return { id: id(x.id), date: date(x.date), minutes: Math.max(0, Math.min(1440, Math.round(Number(x.minutes) || 0))), desc: str(x.desc, 120) }; };
+function normJob(j) {
+  j = j || {};
+  return { id: id(j.id), tpl: tplId(j.tpl), name: str(j.name, 80), rate: Math.max(0, cents(j.rate)), entries: arr(j.entries).map(normEntry) };
+}
 function normIncome(i) {
   i = i || {};
   return { id: id(i.id), tpl: tplId(i.tpl), name: str(i.name, 80), amount: cents(i.amount), date: date(i.date), notes: str(i.notes, 500) };
@@ -211,7 +224,7 @@ export function normalizeState(raw) {
   s.settings.autoLockMin = [1, 2, 5, 10, 15, 30].includes(set.autoLockMin) ? set.autoLockMin : 5;
   s.settings.theme = set.theme === 'light' ? 'light' : 'dark';
   s.settings.carryAmounts = set.carryAmounts !== false;
-  s.settings.hourRate = Math.max(0, cents(set.hourRate));
+  const oldRate = Math.max(0, cents(set.hourRate)); // v1.6
   const meta = raw.meta || {};
   s.meta.created = Number.isFinite(meta.created) ? meta.created : Date.now();
   s.meta.lastBackup = Number.isFinite(meta.lastBackup) ? meta.lastBackup : null;
@@ -219,6 +232,7 @@ export function normalizeState(raw) {
   s.templates.fixed = arr(raw.templates.fixed, 200).map((t) => normTpl(t));
   s.templates.baby = arr(raw.templates.baby, 200).map((t) => normTpl(t));
   s.templates.savings = arr(raw.templates.savings, 200).map((t) => normTpl(t));
+  s.templates.jobs = arr(raw.templates.jobs, 100).map((t) => { t = t || {}; return { id: id(t.id), name: str(t.name, 80), rate: Math.max(0, cents(t.rate)) }; });
   // Código del hogar para la sincronización (sólo en este dispositivo; no se sincroniza)
   if (raw.sync && typeof raw.sync.code === 'string' && /^[A-Za-z0-9_-]{43}$/.test(raw.sync.code)) s.sync = { code: raw.sync.code };
   s.months = Object.create(null);
@@ -235,9 +249,12 @@ export function normalizeState(raw) {
       savings: arr(m.savings).map(normItem),
       budgetsClosed: bool(m.budgetsClosed),
       reimb: arr(m.reimb).map(normItem),
-      hours: arr(m.hours).map((x) => { x = x || {}; return { id: id(x.id), date: date(x.date), minutes: Math.max(0, Math.min(1440, Math.round(Number(x.minutes) || 0))), desc: str(x.desc, 120) }; }),
-      hourRate: Math.max(0, cents(m.hourRate)),
+      jobs: arr(m.jobs, 100).map(normJob),
     };
+    // v1.6 guardaba las horas sin empresa: se pasan a un apartado «Horas»
+    if (Array.isArray(m.hours) && m.hours.length && !s.months[k].jobs.length) {
+      s.months[k].jobs.push(normJob({ id: 'h-' + k, name: 'Horas', rate: cents(m.hourRate) || oldRate, entries: m.hours }));
+    }
   }
   return s;
 }
