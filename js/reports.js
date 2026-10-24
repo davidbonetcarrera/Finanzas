@@ -80,7 +80,7 @@ export function workbookSheets(state, keys, now = new Date()) {
   const rows = [
     [{ v: r.title, title: true }],
     [`Generado el ${now.toLocaleDateString('es-PA')} · importes en USD`],
-    ['El gasto real de las partidas con desglose es la suma de sus transacciones (hoja Transacciones). Los presupuestos no se cuentan como gasto. El saldo libre resta el presupuesto completo: lo que aún no se ha gastado aparece como «Presupuesto por gastar (reservado)» hasta pasarlo a Ahorros. El ahorro no es gasto, pero también se resta. Los reembolsos ya están incluidos en los gastos: al cobrarlos se suman al saldo.'],
+    ['El gasto real de las partidas con desglose es la suma de sus transacciones (hoja Transacciones). Los presupuestos no se cuentan como gasto. El saldo libre resta el presupuesto completo: lo que aún no se ha gastado aparece como «Presupuesto por gastar (reservado)» hasta finalizar la partida; entonces el sobrante vuelve al saldo. El ahorro no es gasto, pero también se resta. Los reembolsos ya están incluidos en los gastos: al cobrarlos se suman al saldo.'],
     [],
     head,
   ];

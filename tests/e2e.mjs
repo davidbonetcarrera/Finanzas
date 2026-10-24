@@ -149,14 +149,28 @@ await page.getByRole('button', { name: 'Totales', exact: true }).click();
 const tot = await page.locator('.view').textContent();
 for (const s of ['$3,000.00', '$2,040.99', '$1,916.49', '$759.01', '$200.00', '$1,615.50', '$300.99', '$1,184.50', '$680.00', '$80.00']) assert.ok(tot.includes(s), 'Totales contiene ' + s);
 await shot('04-totales-mes');
-// fin de mes: el sobrante del presupuesto pasa a ahorros sin cambiar el saldo
-await page.getByRole('button', { name: /Pasar sobrante/ }).click();
-await dlg().getByRole('button', { name: 'Pasar a Ahorros' }).click();
+// fin de mes: al finalizar el súper, lo que sobra del presupuesto vuelve al saldo
+assert.match(tot, /toca «Finalizar»/);
+await page.getByRole('button', { name: 'Gastos', exact: true }).click();
+const sup = page.locator('.item.tx', { hasText: 'Super' });
+if (!(await sup.locator('.tx-body').count())) await sup.locator('.tx-head').click();
+await sup.getByRole('button', { name: 'Finalizar' }).click();
+assert.match(await dlg().textContent(), /Los \$124\.50 que sobran vuelven a tu saldo/);
+await dlg().getByRole('button', { name: 'Finalizar' }).click();
 await page.waitForTimeout(200);
-assert.equal(await strip('Gastos'), '$1,916.49');
-assert.equal(await strip('Ahorro'), '$324.50');
+assert.equal(await strip('Gastos'), '$1,916.49', 'ya no se reserva el presupuesto del súper');
+assert.equal(await strip('Ahorro'), '$200.00', 'el sobrante no va a ahorros');
+assert.equal(await strip('Saldo'), '$883.51', '+$124.50 al saldo');
+assert.match(await sup.textContent(), /Finalizado: los \$124\.50 que sobraron volvieron al saldo/);
+// reabrir y volver a finalizar
+await sup.getByRole('button', { name: 'Reabrir' }).click();
+await page.waitForTimeout(150);
 assert.equal(await strip('Saldo'), '$759.01');
-await page.getByText('Presupuestos cerrados').waitFor();
+await sup.getByRole('button', { name: 'Finalizar' }).click();
+await dlg().getByRole('button', { name: 'Finalizar' }).click();
+await page.waitForTimeout(200);
+assert.equal(await strip('Saldo'), '$883.51');
+await page.getByRole('button', { name: 'Totales', exact: true }).click();
 
 // 7. Exportaciones del mes
 const dl = async (name) => {
@@ -188,7 +202,7 @@ await page.getByRole('button', { name: 'Mes anterior' }).click();
 assert.equal(await page.getByLabel('Importe de Renta').inputValue(), '1000.00', 'el mes anterior no cambia');
 assert.match(await page.locator('.cat-reimb').textContent(), /OK reembolsado/);
 assert.equal(await strip('Gastos'), '$1,916.49');
-assert.equal(await strip('Saldo'), '$839.01', 'el reembolso cobrado se suma al saldo de su mes');
+assert.equal(await strip('Saldo'), '$963.51', 'el reembolso cobrado se suma al saldo de su mes');
 
 // 9. Totales anuales
 await page.getByRole('button', { name: 'Totales', exact: true }).click();

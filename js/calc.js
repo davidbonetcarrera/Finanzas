@@ -3,8 +3,9 @@
 // Reglas:
 //  - Partida "directa": gasto real = importe; pagado = importe si está marcada.
 //  - Los presupuestos se RESERVAN: el saldo libre resta el presupuesto completo
-//    (o el gasto real si lo supera) desde el inicio del mes. Al "pasar el
-//    sobrante a ahorros" el mes deja de reservar y el sobrante queda como ahorro.
+//    (o el gasto real si lo supera) desde el inicio del mes. Al "finalizar" una
+//    partida deja de reservar: sólo cuenta lo gastado y el sobrante vuelve al saldo.
+//    (Los meses cerrados con la versión antigua, "budgetsClosed", tampoco reservan.)
 //  - Partida "con desglose": gasto real = suma de transacciones; pagado = suma
 //    de transacciones pagadas. El presupuesto NUNCA cuenta como gasto real.
 //  - Pendiente = gasto real − pagado.
@@ -23,6 +24,8 @@ export function itemCalc(item) {
       remaining: hasBudget ? budget - real : null,
       over: hasBudget && real > budget ? real - budget : 0,
       count: item.tx.length,
+      done: !!item.done,
+      reserved: !item.done && hasBudget && budget > real ? budget - real : 0,
       allPaid: item.tx.length > 0 && paid === real && item.tx.every((t) => t.paid),
     };
   }
@@ -30,18 +33,19 @@ export function itemCalc(item) {
   const paid = item.paid ? real : 0;
   return {
     mode: 'direct', real, paid, pending: real - paid, budget: 0, hasBudget: false,
-    remaining: null, over: 0, count: 0, allPaid: !!item.paid,
+    remaining: null, over: 0, count: 0, done: false, reserved: 0, allPaid: !!item.paid,
   };
 }
 
 export function categoryCalc(items) {
-  const r = { real: 0, paid: 0, pending: 0, budget: 0, budgetReal: 0, remaining: 0, unspent: 0, over: 0, count: items.length };
+  const r = { real: 0, paid: 0, pending: 0, budget: 0, budgetReal: 0, remaining: 0, unspent: 0, reserved: 0, over: 0, count: items.length };
   for (const it of items) {
     const c = itemCalc(it);
     r.real += c.real; r.paid += c.paid; r.pending += c.pending;
     if (c.hasBudget) {
       r.budget += c.budget; r.budgetReal += c.real; r.remaining += c.remaining;
       if (c.remaining > 0) r.unspent += c.remaining;
+      r.reserved += c.reserved;
       r.over += c.over;
     }
   }
@@ -66,7 +70,8 @@ export function monthCalc(month) {
   const rb = categoryCalc(month && month.reimb ? month.reimb : []);
   const reimb = rb.real, reimbDone = rb.paid, reimbPending = rb.pending;
   const closed = !!(month && month.budgetsClosed);
-  const reserved = closed ? 0 : unspent;     // presupuesto aún sin gastar, ya restado del saldo
+  // presupuesto aún sin gastar de partidas no finalizadas, ya restado del saldo
+  const reserved = closed ? 0 : cats.fixed.reserved + cats.baby.reserved + cats.general.reserved;
   const committed = real + reserved;          // gastos reales + presupuesto reservado
   return {
     income, cats, real, paid, pending,

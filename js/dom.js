@@ -154,7 +154,7 @@ export function choose({ title, message, buttons }) {
     dlg.addEventListener('cancel', () => resolve(null));
     dlg.append(
       h('h2', { class: 'sheet-title' }, title),
-      message ? (Array.isArray(message) ? message.map((m) => h('p', { class: 'sheet-msg' }, m)) : h('p', { class: 'sheet-msg' }, message)) : null,
+      ...(message ? (Array.isArray(message) ? message : [message]).map((m) => h('p', { class: 'sheet-msg' }, m)) : []),
       h('div', { class: 'sheet-actions column' }, buttons.map((b) => h('button', { type: 'button', class: 'btn ' + (b.class || ''), onclick: () => done(b.value) }, b.label))),
     );
     dlg.showModal();

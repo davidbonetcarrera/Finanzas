@@ -80,7 +80,7 @@ Los importes aceptan `475.50`, `475,50`, `1,075.50` o `$600`.
 ### Presupuestos que se restan desde el inicio (v1.2)
 - En las partidas con presupuesto (p. ej. Super $600), el **presupuesto completo se resta del saldo libre desde el primer día**. Cada compra va consumiendo ese presupuesto («Quedan $X»). Si te pasas, se resta el gasto real.
 - La franja superior muestra **Gastos** = gastos reales + presupuesto aún por gastar, y **Saldo** = lo que de verdad te queda libre.
-- **Fin de mes:** en Totales → Presupuestos, toca **«Pasar sobrante a Ahorros»**. Lo no gastado se añade a Ahorros como «Sobrante de presupuestos», el saldo no cambia y el presupuesto deja de reservarse. Se puede deshacer con «Reabrir presupuestos».
+- **Finalizar una partida:** cuando termines, por ejemplo, el súper del mes, ábrelo en Gastos y toca **«Finalizar»**. Desde ese momento sólo cuenta lo gastado de verdad: si sobró presupuesto, **ese dinero vuelve al saldo libre**; si te pasaste, el exceso ya estaba restado. Se puede deshacer con «Reabrir». (Los meses que se cerraron con la versión anterior, pasando el sobrante a Ahorros, se pueden reabrir desde Totales.)
 
 ### Reglas de cálculo
 - **Presupuesto** = dinero reservado. No es gasto real, pero sí se resta del saldo libre mientras no se pase a Ahorros.

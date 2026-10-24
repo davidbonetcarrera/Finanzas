@@ -5,7 +5,7 @@ import {
   CATS, SAVINGS, REIMB, MONTH_NAMES, newState, monthKey, parseKey, shiftKey, keyLabel, yearKeys, newItem, newTx, newIncome,
   viewMonth, ensureMonth, latestBefore, normalizeState, uid, newJob, newHours, jobMinutes, parseHours, fmtHours, hoursMoney,
 } from './model.js';
-import { itemCalc, monthCalc, periodCalc, closeBudgets, reopenBudgets, pendingReimbBefore } from './calc.js';
+import { itemCalc, monthCalc, periodCalc, reopenBudgets, pendingReimbBefore } from './calc.js';
 import { createSession, seal, open, openWith, isEnvelope, MIN_PASSPHRASE } from './crypto.js';
 import { loadVault, saveVault, wipeVault, requestPersistence, loadSync, saveSync } from './store.js';
 import { syncConfigured, newCode, extractCode, isCode, remoteRev, remoteGet, remotePut, merge3 } from './sync.js';
@@ -783,12 +783,14 @@ function txItem(cat, it) {
     h('button', { class: 'tx-head', 'aria-expanded': String(isOpen), onclick: () => { isOpen ? app.open.delete(k) : app.open.add(k); render(); } },
       h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
       h('span', { class: 'item-name' },
-        h('span', null, it.name || 'Sin nombre', c.allPaid && c.real ? h('span', { class: 'ok badge' }, '✓ OK') : null),
+        h('span', null, it.name || 'Sin nombre', c.done ? h('span', { class: 'ok badge' }, '✓ Finalizado') : c.allPaid && c.real ? h('span', { class: 'ok badge' }, '✓ OK') : null),
         h('small', null, `${c.count} transacc.`, c.pending ? ` · pend. ${fmt(c.pending)}` : '')),
       h('span', { class: 'tx-amounts' }, h('b', null, fmt(c.real)), c.hasBudget ? h('small', null, 'de ' + fmt(c.budget)) : null),
     ),
     c.hasBudget ? h('div', { class: 'bar' + (c.over ? ' over' : '') }, h('i', { style: { width: pct + '%' } })) : null,
-    h('div', { class: 'tx-status' }, status),
+    h('div', { class: 'tx-status' }, c.done && c.hasBudget && !sav
+      ? (c.remaining > 0 ? h('span', { class: 'pos' }, `✓ Finalizado: los ${fmt(c.remaining)} que sobraron volvieron al saldo`) : c.remaining < 0 ? h('span', { class: 'neg' }, `✓ Finalizado con ${fmt(-c.remaining)} de exceso`) : h('span', { class: 'pos' }, '✓ Finalizado justo en el presupuesto'))
+      : status),
     isOpen ? h('div', { class: 'tx-body' },
       h('label', { class: 'budget-row' }, h('span', null, sav ? 'Meta mensual (opcional)' : 'Presupuesto mensual'),
         h('input', {
@@ -810,6 +812,7 @@ function txItem(cat, it) {
           h('span', { class: 'amount' }, fmt(t.amount)))))),
       h('div', { class: 'tx-actions' },
         h('button', { class: 'btn small primary', onclick: () => editTx(cat, it, null) }, '+ Transacción'),
+        c.hasBudget && !sav ? h('button', { class: 'btn small' + (c.done ? ' ghost' : ''), onclick: () => toggleDone(cat, it, c) }, c.done ? 'Reabrir' : 'Finalizar') : null,
         h('button', { class: 'btn small ghost', onclick: () => editItem(cat, it) }, 'Opciones'),
       ),
     ) : null,
@@ -981,12 +984,30 @@ function monthTotals(c) {
         h('ul', { class: 'budget-list' }, budgeted.map(({ it, ic, label }) => h('li', null,
           h('div', { class: 'bl-top' }, h('span', null, it.name, h('small', null, ' · ' + label.replace('Gastos ', ''))), h('span', null, fmt(ic.real), h('small', null, ' / ' + fmt(ic.budget)))),
           h('div', { class: 'bar' + (ic.over ? ' over' : '') }, h('i', { style: { width: Math.min(100, (ic.real / ic.budget) * 100) + '%' } })),
-          h('small', { class: ic.remaining < 0 ? 'neg' : 'muted' }, ic.remaining >= 0 ? `Quedan ${fmt(ic.remaining)}` : `Excedido por ${fmt(-ic.remaining)}`)))),
+          h('small', { class: ic.remaining < 0 ? 'neg' : ic.done ? 'pos' : 'muted' }, (ic.done ? '✓ Finalizado · ' : '') + (ic.remaining >= 0 ? `${ic.done ? 'Sobraron' : 'Quedan'} ${fmt(ic.remaining)}` : `Excedido por ${fmt(-ic.remaining)}`))))),
         budgetCloseControls(c),
       ),
     ),
     exportCard([app.key], keyLabel(app.key)),
   );
+}
+
+/** Finalizar una partida con presupuesto: deja de reservar lo no gastado (vuelve al saldo). */
+async function toggleDone(cat, it, c) {
+  if (!c.done) {
+    const left = c.remaining;
+    const ok = await choose({
+      title: `¿Finalizar ${it.name} de ${keyLabel(app.key)}?`,
+      message: [left > 0 ? `Gastaste ${fmt(c.real)} de ${fmt(c.budget)}. Los ${fmt(left)} que sobran vuelven a tu saldo libre.`
+        : left < 0 ? `Gastaste ${fmt(c.real)}, ${fmt(-left)} más de lo presupuestado. Ese exceso ya está restado del saldo.`
+          : `Gastaste justo lo presupuestado (${fmt(c.budget)}).`,
+      'Si luego añades otra transacción, también se restará del saldo. Puedes reabrirla cuando quieras.'],
+      buttons: [{ label: 'Finalizar', value: true, class: 'primary' }, { label: 'Cancelar', value: null, class: 'ghost' }],
+    });
+    if (!ok) return;
+  }
+  mutate((mm) => { const x = mm[cat].find((i) => i.id === it.id); if (x) x.done = !c.done; });
+  toast(c.done ? 'Reabierta: vuelve a reservar el presupuesto' : (c.remaining > 0 ? `${fmt(c.remaining)} de vuelta al saldo` : 'Finalizada'));
 }
 
 function budgetCloseControls(c) {
@@ -998,19 +1019,9 @@ function budgetCloseControls(c) {
         mutate((mm) => reopenBudgets(mm));
       } }, 'Reabrir presupuestos'));
   }
-  if (c.unspent <= 0) return null;
+  if (c.reserved <= 0) return null;
   return h('div', { class: 'close-box' },
-    h('p', { class: 'explain' }, `Los ${fmt(c.unspent)} de presupuesto que aún no has gastado ya están restados de tu saldo libre. A fin de mes, pásalos a Ahorros.`),
-    h('button', { class: 'btn small primary', onclick: async () => {
-      const ok = await choose({
-        title: `¿Pasar ${fmt(c.unspent)} a Ahorros?`,
-        message: ['Úsalo al terminar el mes. El sobrante de tus presupuestos se añade a Ahorros como «Sobrante de presupuestos» y tu saldo libre no cambia.', 'Si luego registras más compras de este mes, se restarán del saldo como gasto real. Puedes deshacerlo con «Reabrir presupuestos».'],
-        buttons: [{ label: 'Pasar a Ahorros', value: true, class: 'primary' }, { label: 'Cancelar', value: null, class: 'ghost' }],
-      });
-      if (!ok) return;
-      mutate((mm) => { closeBudgets(mm, newItem); });
-      toast('Sobrante pasado a Ahorros');
-    } }, `Pasar sobrante (${fmt(c.unspent)}) a Ahorros`));
+    h('p', { class: 'explain' }, `Los ${fmt(c.reserved)} de presupuesto que aún no has gastado ya están restados de tu saldo libre. Cuando termines una partida (p. ej. el súper del mes), ábrela en Gastos y toca «Finalizar»: lo que sobre vuelve al saldo.`));
 }
 
 function periodKeys() {
@@ -1225,7 +1236,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.7 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.8 · funciona sin conexión'),
   );
 }
 

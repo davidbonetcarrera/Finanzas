@@ -195,6 +195,7 @@ function normItem(i) {
     amount: cents(i.amount), paid: bool(i.paid), budget: cents(i.budget),
     date: date(i.date), notes: str(i.notes, 500), tx: arr(i.tx).map(normTx),
     src: i.src === 'leftover' ? 'leftover' : '',
+    done: bool(i.done),
     who: str(i.who, 80),
     paidDate: date(i.paidDate),
   };

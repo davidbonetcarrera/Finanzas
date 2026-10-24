@@ -88,6 +88,21 @@ test('ejemplo del enunciado: ingresos 3000, gastos 2000, pagado 1200', () => {
   reopenBudgets(m);
   assert.equal(monthCalc(m).savings, 0);
   assert.equal(monthCalc(m).balance, 60000);
+  // finalizar el súper: deja de reservar y el sobrante ($400) vuelve al saldo
+  const sup = m.fixed.find((i) => i.name === 'Super');
+  sup.done = true;
+  const c3 = monthCalc(m);
+  assert.equal(c3.reserved, 0);
+  assert.equal(c3.savings, 0, 'el sobrante no va a ahorros');
+  assert.equal(c3.balance, 100000, 'saldo +$400');
+  sup.done = false;
+  assert.equal(monthCalc(m).balance, 60000, 'reabrir vuelve a reservar');
+  // con exceso, finalizar no cambia nada: el exceso ya estaba restado
+  sup.tx.push(newTx({ amount: 60000 }));
+  const before = monthCalc(m).balance;
+  sup.done = true;
+  assert.equal(monthCalc(m).balance, before);
+  assert.equal(normalizeState(JSON.parse(JSON.stringify(s))).months[m.key].fixed.find((i) => i.name === 'Super').done, true);
 });
 
 test('gastos directos: importe y estado de pago', () => {

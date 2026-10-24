@@ -220,7 +220,7 @@ export async function buildPdf(state, keys) {
 
   doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...C.muted);
   if (y > doc.internal.pageSize.getHeight() - 60) { doc.addPage(); y = 44; }
-  doc.text(doc.splitTextToSize('Los presupuestos no se cuentan como gasto. En partidas con desglose, el gasto real es la suma de sus transacciones. El saldo libre resta el presupuesto completo (lo no gastado queda reservado hasta pasarlo a Ahorros) y el ahorro.', pageW - 2 * M), M, y);
+  doc.text(doc.splitTextToSize('Los presupuestos no se cuentan como gasto. En partidas con desglose, el gasto real es la suma de sus transacciones. El saldo libre resta el presupuesto completo (lo no gastado queda reservado hasta finalizar la partida, y entonces vuelve al saldo) y el ahorro.', pageW - 2 * M), M, y);
 
   const pages = doc.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
