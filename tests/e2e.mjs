@@ -75,6 +75,8 @@ const stepsJob = page.locator('.job', { hasText: 'Steps' });
 await stepsJob.locator('.tx-list li', { hasText: '$60.00' }).locator('input[type=checkbox]').dispatchEvent('click');
 await page.waitForTimeout(150);
 assert.match(await page.locator('.hours').textContent(), /Cobrado: \$60\.00Por cobrar: \$80\.00/);
+assert.match(await stepsJob.locator('.hours-sub').first().textContent(), /Subtotal marcadas 3 h de 5 h 30 min\$60\.00/);
+assert.match(await stepsJob.locator('.hours-sub').nth(1).textContent(), /Sin marcar 2 h 30 min\$50\.00/);
 await page.screenshot({ path: OUT + '02b-horas.png', fullPage: true });
 
 // 3. Gastos fijos directos

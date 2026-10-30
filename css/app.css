@@ -382,3 +382,6 @@ pre.invite { white-space: pre-wrap; word-break: break-all; font-size: .85rem; ba
 /* Horas */
 .hours .row-btn.rate { border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .hours-total { display: flex; justify-content: space-between; gap: 8px; margin: 8px 0 0; font-size: .9rem; }
+.hours-sub { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 8px 2px; border-top: 1px solid var(--line); }
+.hours-sub small { color: var(--muted); }
+.hours-sub b { color: var(--olive); }

@@ -503,6 +503,7 @@ function jobItem(j) {
   const min = jobMinutes(j);
   const days = new Set(j.entries.map((x) => x.date || x.id)).size;
   const unpaid = j.entries.filter((x) => !x.paid).reduce((a, x) => a + x.minutes, 0);
+  const marked = min - unpaid;
   return h('li', { class: 'item tx job' + (isOpen ? ' open' : '') },
     h('button', { class: 'tx-head', 'aria-expanded': String(isOpen), onclick: () => { isOpen ? app.open.delete(k) : app.open.add(k); render(); } },
       h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
@@ -524,13 +525,19 @@ function jobItem(j) {
           },
         })),
       j.entries.length === 0 ? h('p', { class: 'empty small' }, 'Sin horas todavía.') : null,
-      j.entries.length ? h('p', { class: 'muted small' }, 'Marca la casilla de los días que ya os pagaron.') : null,
+      j.entries.length ? h('p', { class: 'muted small' }, 'Marca los días que ya os pagaron o que quieras sumar: abajo verás el subtotal.') : null,
       h('ul', { class: 'tx-list' }, [...j.entries].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((x) => h('li', { class: x.paid ? 'is-paid' : '' },
         paidCheck(x.paid, (val) => mutate((mm) => { const jj = mm.jobs.find((y) => y.id === j.id); const e = jj && jj.entries.find((q) => q.id === x.id); if (e) e.paid = val; }), `Cobrado: ${j.name} ${x.date ? shortDate(x.date) : ''}`.trim(), 'hp-' + x.id),
         h('button', { class: 'tx-row', onclick: () => editHours(j, x) },
           h('span', { class: 'tx-date' }, x.date ? shortDate(x.date) : '—'),
           h('span', { class: 'tx-desc' }, fmtHours(x.minutes) + (x.desc ? ' · ' + x.desc : '')),
           h('span', { class: 'amount' }, j.rate ? fmt(hoursMoney(x.minutes, j.rate)) : ''))))),
+      marked ? h('div', { class: 'hours-sub' },
+        h('span', null, 'Subtotal marcadas', h('small', null, ` ${fmtHours(marked)} de ${fmtHours(min)}`)),
+        h('b', null, j.rate ? fmt(hoursMoney(marked, j.rate)) : fmtHours(marked))) : null,
+      marked && unpaid ? h('div', { class: 'hours-sub muted' },
+        h('span', null, 'Sin marcar', h('small', null, ` ${fmtHours(unpaid)}`)),
+        h('span', null, j.rate ? fmt(hoursMoney(unpaid, j.rate)) : fmtHours(unpaid))) : null,
       h('div', { class: 'tx-actions' },
         h('button', { class: 'btn small primary', onclick: () => editHours(j, null) }, '+ Horas'),
         h('button', { class: 'btn small ghost', onclick: () => editJob(j) }, 'Opciones'),
@@ -1262,7 +1269,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.9 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.10 · funciona sin conexión'),
   );
 }
 
