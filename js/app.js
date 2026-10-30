@@ -3,7 +3,7 @@ import { h, formSheet, choose, confirmDanger, infoSheet, toast, saveFile, pickFi
 import { fmt, toInput, parseAmount } from './money.js';
 import {
   CATS, SAVINGS, REIMB, MONTH_NAMES, newState, monthKey, parseKey, shiftKey, keyLabel, yearKeys, newItem, newTx, newIncome,
-  viewMonth, ensureMonth, latestBefore, normalizeState, uid, newJob, newHours, jobMinutes, parseHours, fmtHours, hoursMoney,
+  viewMonth, ensureMonth, latestBefore, normalizeState, uid, newJob, newHours, jobMinutes, parseHours, fmtHours, hoursMoney, moveUnpaidHours,
 } from './model.js';
 import { itemCalc, monthCalc, periodCalc, reopenBudgets, pendingReimbBefore } from './calc.js';
 import { createSession, seal, open, openWith, isEnvelope, MIN_PASSPHRASE } from './crypto.js';
@@ -479,12 +479,20 @@ function hoursSection(m) {
   const jobs = m.jobs || [];
   const totalMoney = jobs.reduce((a, j) => a + hoursMoney(jobMinutes(j), j.rate), 0);
   const totalMin = jobs.reduce((a, j) => a + jobMinutes(j), 0);
+  let unpaidMin = 0, unpaidMoney = 0, paidMoney = 0;
+  for (const j of jobs) for (const x of j.entries) {
+    if (x.paid) paidMoney += hoursMoney(x.minutes, j.rate);
+    else { unpaidMin += x.minutes; unpaidMoney += hoursMoney(x.minutes, j.rate); }
+  }
+  const next = shiftKey(app.key, 1);
   return h('section', { class: 'card hours' },
     h('div', { class: 'card-head' }, h('h2', null, 'Horas'), h('b', { class: 'big' }, totalMoney ? fmt(totalMoney) : fmtHours(totalMin))),
     h('p', { class: 'muted small' }, 'Para llevar la cuenta de lo que hay que cobrar. No se suma a los ingresos ni cambia el saldo.'),
     jobs.length === 0 ? h('p', { class: 'empty' }, 'Añade una empresa o cliente (p. ej. «Steps») y dentro apunta las horas de cada día.') : null,
     h('ul', { class: 'items' }, jobs.map(jobItem)),
-    jobs.length > 1 ? h('p', { class: 'hours-total' }, h('span', null, `Total: ${fmtHours(totalMin)}`), totalMoney ? h('b', null, `${fmt(totalMoney)} por cobrar`) : null) : null,
+    jobs.length > 1 ? h('p', { class: 'hours-total' }, h('span', null, `Total: ${fmtHours(totalMin)}`), totalMoney ? h('b', null, fmt(totalMoney)) : null) : null,
+    totalMin ? h('p', { class: 'hours-total' }, h('span', { class: 'pos' }, `Cobrado: ${fmt(paidMoney)}`), h('b', { class: unpaidMin ? 'warn' : '' }, `Por cobrar: ${fmt(unpaidMoney)}`)) : null,
+    unpaidMin ? h('button', { class: 'btn block move-hours', onclick: () => moveHours(unpaidMin) }, `Pasar ${fmtHours(unpaidMin)} sin cobrar a ${keyLabel(next)}`) : null,
     h('button', { class: 'btn add', onclick: () => editJob(null) }, '+ Añadir empresa'),
   );
 }
@@ -494,11 +502,12 @@ function jobItem(j) {
   const isOpen = app.open.has(k);
   const min = jobMinutes(j);
   const days = new Set(j.entries.map((x) => x.date || x.id)).size;
+  const unpaid = j.entries.filter((x) => !x.paid).reduce((a, x) => a + x.minutes, 0);
   return h('li', { class: 'item tx job' + (isOpen ? ' open' : '') },
     h('button', { class: 'tx-head', 'aria-expanded': String(isOpen), onclick: () => { isOpen ? app.open.delete(k) : app.open.add(k); render(); } },
       h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'),
       h('span', { class: 'item-name' }, h('span', null, j.name || 'Sin nombre'),
-        h('small', null, `Total ${fmtHours(min)}`, days ? ` · ${days} día${days === 1 ? '' : 's'}` : '')),
+        h('small', null, `Total ${fmtHours(min)}`, days ? ` · ${days} día${days === 1 ? '' : 's'}` : '', min ? (unpaid ? ` · sin cobrar ${fmtHours(unpaid)}` : ' · ✓ cobrado') : '')),
       h('span', { class: 'tx-amounts' }, h('b', null, j.rate ? fmt(hoursMoney(min, j.rate)) : fmtHours(min)), j.rate ? h('small', null, `${fmt(j.rate)}/h`) : null),
     ),
     isOpen ? h('div', { class: 'tx-body' },
@@ -515,7 +524,9 @@ function jobItem(j) {
           },
         })),
       j.entries.length === 0 ? h('p', { class: 'empty small' }, 'Sin horas todavía.') : null,
-      h('ul', { class: 'tx-list' }, [...j.entries].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((x) => h('li', null,
+      j.entries.length ? h('p', { class: 'muted small' }, 'Marca la casilla de los días que ya os pagaron.') : null,
+      h('ul', { class: 'tx-list' }, [...j.entries].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map((x) => h('li', { class: x.paid ? 'is-paid' : '' },
+        paidCheck(x.paid, (val) => mutate((mm) => { const jj = mm.jobs.find((y) => y.id === j.id); const e = jj && jj.entries.find((q) => q.id === x.id); if (e) e.paid = val; }), `Cobrado: ${j.name} ${x.date ? shortDate(x.date) : ''}`.trim(), 'hp-' + x.id),
         h('button', { class: 'tx-row', onclick: () => editHours(j, x) },
           h('span', { class: 'tx-date' }, x.date ? shortDate(x.date) : '—'),
           h('span', { class: 'tx-desc' }, fmtHours(x.minutes) + (x.desc ? ' · ' + x.desc : '')),
@@ -526,6 +537,20 @@ function jobItem(j) {
       ),
     ) : null,
   );
+}
+
+async function moveHours(unpaidMin) {
+  const next = shiftKey(app.key, 1);
+  const ok = await choose({
+    title: `¿Pasar las horas sin cobrar a ${keyLabel(next)}?`,
+    message: [`Las ${fmtHours(unpaidMin)} sin cobrar de ${keyLabel(app.key)} se moverán a ${keyLabel(next)}, a la misma empresa y con su día real.`,
+      `En ${keyLabel(app.key)} sólo quedarán las horas cobradas.`],
+    buttons: [{ label: 'Pasar horas', value: true, class: 'primary' }, { label: 'Cancelar', value: null, class: 'ghost' }],
+  });
+  if (!ok) return;
+  ensureMonth(app.state, app.key, app.virtual);
+  mutateState((st) => { moveUnpaidHours(st, app.key, next, app.virtual); });
+  toast(`${fmtHours(unpaidMin)} pasadas a ${keyLabel(next)}`);
 }
 
 async function editJob(j) {
@@ -572,6 +597,7 @@ async function editHours(j, x) {
       { name: 'date', label: 'Día', type: 'date', value: x ? x.date : defaultDate() },
       { name: 'hours', label: 'Horas', type: 'text', value: x ? (x.minutes % 60 ? `${Math.floor(x.minutes / 60)}:${String(x.minutes % 60).padStart(2, '0')}` : String(x.minutes / 60)) : '', required: true, autofocus: !x, placeholder: 'Ej.: 3, 2.5 o 2:30' },
       { name: 'desc', label: 'Descripción (opcional)', type: 'text', value: x ? x.desc : '' },
+      { name: 'paid', label: 'Ya cobrado', type: 'checkbox', value: x ? x.paid : false },
     ],
     deleteLabel: x ? 'Eliminar' : null,
     submitLabel: x ? 'Guardar' : 'Añadir',
@@ -584,7 +610,7 @@ async function editHours(j, x) {
     if (v === 'delete') { job.entries = job.entries.filter((y) => y.id !== x.id); return; }
     let t = x ? job.entries.find((y) => y.id === x.id) : null;
     if (!t) { t = newHours(); job.entries.push(t); }
-    Object.assign(t, { date: v.date, minutes: parseHours(v.hours), desc: v.desc });
+    Object.assign(t, { date: v.date, minutes: parseHours(v.hours), desc: v.desc, paid: v.paid });
   });
 }
 
@@ -1236,7 +1262,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.8 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.9 · funciona sin conexión'),
   );
 }
 

@@ -68,8 +68,13 @@ const addHours = async (job, d, desc) => {
 await addHours('Steps', '3', ''); await addHours('Steps', '2:30', 'Diseño'); await addHours('Teresa Mann', '2', '');
 assert.match(await page.locator('.job', { hasText: 'Steps' }).locator('.tx-head').textContent(), /Total 5 h 30 min.*\$110\.00/);
 assert.match(await page.locator('.job', { hasText: 'Teresa Mann' }).locator('.tx-head').textContent(), /Total 2 h.*\$30\.00/);
-assert.match(await page.locator('.hours .hours-total').textContent(), /Total: 7 h 30 min\$140\.00 por cobrar/);
+assert.match(await page.locator('.hours .hours-total').first().textContent(), /Total: 7 h 30 min\$140\.00/);
 assert.equal(await strip('Ingresos'), '$3,000.00', 'las horas no cuentan como ingreso');
+// horas cobradas y paso de las no cobradas al mes siguiente
+const stepsJob = page.locator('.job', { hasText: 'Steps' });
+await stepsJob.locator('.tx-list li', { hasText: '$60.00' }).locator('input[type=checkbox]').dispatchEvent('click');
+await page.waitForTimeout(150);
+assert.match(await page.locator('.hours').textContent(), /Cobrado: \$60\.00Por cobrar: \$80\.00/);
 await page.screenshot({ path: OUT + '02b-horas.png', fullPage: true });
 
 // 3. Gastos fijos directos
@@ -182,6 +187,21 @@ const dl = async (name) => {
 const pdfMonth = await dl('Descargar PDF');
 const xlsxMonth = await dl('Descargar Excel');
 
+// 7b. Fin de mes: las horas sin cobrar pasan al mes siguiente
+await page.getByRole('button', { name: 'Ingresos', exact: true }).click();
+await page.getByRole('button', { name: /Pasar 4 h 30 min sin cobrar a/ }).click();
+await dlg().getByRole('button', { name: 'Pasar horas' }).click();
+await page.waitForTimeout(200);
+assert.match(await stepsJob.locator('.tx-head').textContent(), /Total 3 h.*✓ cobrado/);
+assert.match(await page.locator('.job', { hasText: 'Teresa Mann' }).locator('.tx-head').textContent(), /Total 0 h/);
+assert.equal(await page.getByRole('button', { name: /sin cobrar a/ }).count(), 0);
+await page.getByRole('button', { name: 'Mes siguiente' }).click();
+assert.match(await page.locator('.job', { hasText: 'Steps' }).locator('.tx-head').textContent(), /Total 2 h 30 min.*\$50\.00/);
+assert.match(await page.locator('.job', { hasText: 'Teresa Mann' }).locator('.tx-head').textContent(), /Total 2 h.*\$30\.00/);
+await page.screenshot({ path: OUT + '02c-horas-mes-siguiente.png', fullPage: true });
+await page.getByRole('button', { name: 'Mes anterior' }).click();
+await page.getByRole('button', { name: 'Gastos', exact: true }).click();
+
 // 8. Mes siguiente: independiente
 await page.getByRole('button', { name: 'Gastos', exact: true }).click();
 await page.getByRole('button', { name: 'Mes siguiente' }).click();
@@ -197,7 +217,9 @@ await page.waitForTimeout(150);
 assert.doesNotMatch(await page.locator('.cat-reimb').textContent(), /meses anteriores/);
 const r2 = page.getByLabel('Importe de Renta');
 await r2.fill('1100'); await r2.press('Enter');
-await page.getByLabel('Pagado: Renta').check({ force: true });
+await page.getByLabel('Pagado: Renta').dispatchEvent('click');
+await page.waitForTimeout(150);
+assert.equal(await page.getByLabel('Pagado: Renta').isChecked(), true);
 await page.getByRole('button', { name: 'Mes anterior' }).click();
 assert.equal(await page.getByLabel('Importe de Renta').inputValue(), '1000.00', 'el mes anterior no cambia');
 assert.match(await page.locator('.cat-reimb').textContent(), /OK reembolsado/);

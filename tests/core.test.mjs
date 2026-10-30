@@ -355,3 +355,25 @@ test('horas por empresa: formatos, dinero, no cuentan en totales, se mantienen a
   const mig = normalizeState(old).months['2026-09'].jobs;
   assert.deepEqual(mig.map((j) => [j.name, j.rate, j.entries.length]), [['Horas', 1000, 1]]);
 });
+
+test('horas sin cobrar: pasan al mes siguiente con su día, a la misma empresa', async () => {
+  const { newHours, newJob, moveUnpaidHours, buildMonth } = await import('../js/model.js');
+  const s = newState();
+  s.templates.jobs.push({ id: 'jb1', name: 'Steps', rate: 2000 });
+  const oct = ensureMonth(s, '2026-10');
+  const steps = oct.jobs[0];
+  steps.entries.push(newHours({ date: '2026-10-10', minutes: 120, paid: true }), newHours({ date: '2026-10-27', minutes: 180 }), newHours({ date: '2026-10-28', minutes: 60 }));
+  const tm = newJob({ name: 'Teresa Mann', rate: 1500 });
+  tm.entries.push(newHours({ date: '2026-10-29', minutes: 90 }));
+  oct.jobs.push(tm);
+  const virtual = new Map();
+  virtual.set('2026-11', buildMonth(s, '2026-11'));
+  assert.equal(moveUnpaidHours(s, '2026-10', '2026-11', virtual), 330);
+  assert.deepEqual(oct.jobs.map((j) => j.entries.length), [1, 0], 'en octubre sólo quedan las cobradas');
+  const nov = s.months['2026-11'];
+  assert.ok(nov, 'noviembre se guarda');
+  assert.deepEqual(nov.jobs.map((j) => [j.name, j.rate, j.entries.map((x) => x.date)]),
+    [['Steps', 2000, ['2026-10-27', '2026-10-28']], ['Teresa Mann', 1500, ['2026-10-29']]]);
+  assert.equal(moveUnpaidHours(s, '2026-10', '2026-11', virtual), 0, 'no se mueve dos veces');
+  assert.equal(normalizeState(JSON.parse(JSON.stringify(s))).months['2026-10'].jobs[0].entries[0].paid, true);
+});

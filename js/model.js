@@ -82,8 +82,32 @@ export function newTx({ date = '', desc = '', amount = 0, paid = false } = {}) {
 export function newJob({ name = '', rate = 0, tpl = null } = {}) {
   return { id: uid(), tpl, name, rate, entries: [] };
 }
-export function newHours({ date = '', minutes = 0, desc = '' } = {}) {
-  return { id: uid(), date, minutes, desc };
+export function newHours({ date = '', minutes = 0, desc = '', paid = false } = {}) {
+  return { id: uid(), date, minutes, desc, paid };
+}
+
+/**
+ * Pasa las horas sin cobrar de un mes al siguiente (con su día real), dentro
+ * de la misma empresa (se crea en el mes destino si no existe).
+ * Devuelve los minutos movidos.
+ */
+export function moveUnpaidHours(state, fromKey, toKey, virtual) {
+  const from = state.months[fromKey];
+  if (!from || !from.jobs) return 0;
+  let moved = 0;
+  for (const j of from.jobs) {
+    const unpaid = j.entries.filter((x) => !x.paid);
+    if (!unpaid.length) continue;
+    const to = ensureMonth(state, toKey, virtual);
+    to.jobs = to.jobs || [];
+    const norm = (n) => (n || '').trim().toLowerCase();
+    let t = (j.tpl && to.jobs.find((y) => y.tpl === j.tpl)) || to.jobs.find((y) => norm(y.name) === norm(j.name));
+    if (!t) { t = newJob({ name: j.name, rate: j.rate, tpl: j.tpl }); to.jobs.push(t); }
+    if (!t.rate) t.rate = j.rate;
+    for (const x of unpaid) { t.entries.push({ ...x, id: uid() }); moved += x.minutes; }
+    j.entries = j.entries.filter((x) => x.paid);
+  }
+  return moved;
 }
 export const jobMinutes = (j) => j.entries.reduce((a, x) => a + x.minutes, 0);
 
@@ -200,7 +224,7 @@ function normItem(i) {
     paidDate: date(i.paidDate),
   };
 }
-const normEntry = (x) => { x = x || {}; return { id: id(x.id), date: date(x.date), minutes: Math.max(0, Math.min(1440, Math.round(Number(x.minutes) || 0))), desc: str(x.desc, 120) }; };
+const normEntry = (x) => { x = x || {}; return { id: id(x.id), date: date(x.date), minutes: Math.max(0, Math.min(1440, Math.round(Number(x.minutes) || 0))), desc: str(x.desc, 120), paid: bool(x.paid) }; };
 function normJob(j) {
   j = j || {};
   return { id: id(j.id), tpl: tplId(j.tpl), name: str(j.name, 80), rate: Math.max(0, cents(j.rate)), entries: arr(j.entries).map(normEntry) };
