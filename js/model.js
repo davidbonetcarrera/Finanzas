@@ -91,11 +91,12 @@ export function newHours({ date = '', minutes = 0, desc = '', paid = false } = {
  * de la misma empresa (se crea en el mes destino si no existe).
  * Devuelve los minutos movidos.
  */
-export function moveUnpaidHours(state, fromKey, toKey, virtual) {
+export function moveUnpaidHours(state, fromKey, toKey, virtual, jobId = null) {
   const from = state.months[fromKey];
   if (!from || !from.jobs) return 0;
   let moved = 0;
   for (const j of from.jobs) {
+    if (jobId && j.id !== jobId) continue;
     const unpaid = j.entries.filter((x) => !x.paid);
     if (!unpaid.length) continue;
     const to = ensureMonth(state, toKey, virtual);

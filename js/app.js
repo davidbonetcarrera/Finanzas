@@ -484,7 +484,6 @@ function hoursSection(m) {
     if (x.paid) paidMoney += hoursMoney(x.minutes, j.rate);
     else { unpaidMin += x.minutes; unpaidMoney += hoursMoney(x.minutes, j.rate); }
   }
-  const next = shiftKey(app.key, 1);
   return h('section', { class: 'card hours' },
     h('div', { class: 'card-head' }, h('h2', null, 'Horas'), h('b', { class: 'big' }, totalMoney ? fmt(totalMoney) : fmtHours(totalMin))),
     h('p', { class: 'muted small' }, 'Para llevar la cuenta de lo que hay que cobrar. No se suma a los ingresos ni cambia el saldo.'),
@@ -492,7 +491,6 @@ function hoursSection(m) {
     h('ul', { class: 'items' }, jobs.map(jobItem)),
     jobs.length > 1 ? h('p', { class: 'hours-total' }, h('span', null, `Total: ${fmtHours(totalMin)}`), totalMoney ? h('b', null, fmt(totalMoney)) : null) : null,
     totalMin ? h('p', { class: 'hours-total' }, h('span', { class: 'pos' }, `Cobrado: ${fmt(paidMoney)}`), h('b', { class: unpaidMin ? 'warn' : '' }, `Por cobrar: ${fmt(unpaidMoney)}`)) : null,
-    unpaidMin ? h('button', { class: 'btn block move-hours', onclick: () => moveHours(unpaidMin) }, `Pasar ${fmtHours(unpaidMin)} sin cobrar a ${keyLabel(next)}`) : null,
     h('button', { class: 'btn add', onclick: () => editJob(null) }, '+ Añadir empresa'),
   );
 }
@@ -538,6 +536,7 @@ function jobItem(j) {
       marked && unpaid ? h('div', { class: 'hours-sub muted' },
         h('span', null, 'Sin marcar', h('small', null, ` ${fmtHours(unpaid)}`)),
         h('span', null, j.rate ? fmt(hoursMoney(unpaid, j.rate)) : fmtHours(unpaid))) : null,
+      unpaid ? h('button', { class: 'btn block small move-hours', onclick: () => moveHours(j, unpaid) }, `Pasar ${fmtHours(unpaid)} sin marcar a ${keyLabel(shiftKey(app.key, 1))}`) : null,
       h('div', { class: 'tx-actions' },
         h('button', { class: 'btn small primary', onclick: () => editHours(j, null) }, '+ Horas'),
         h('button', { class: 'btn small ghost', onclick: () => editJob(j) }, 'Opciones'),
@@ -546,18 +545,18 @@ function jobItem(j) {
   );
 }
 
-async function moveHours(unpaidMin) {
+async function moveHours(j, unpaidMin) {
   const next = shiftKey(app.key, 1);
   const ok = await choose({
-    title: `¿Pasar las horas sin cobrar a ${keyLabel(next)}?`,
-    message: [`Las ${fmtHours(unpaidMin)} sin cobrar de ${keyLabel(app.key)} se moverán a ${keyLabel(next)}, a la misma empresa y con su día real.`,
-      `En ${keyLabel(app.key)} sólo quedarán las horas cobradas.`],
+    title: `¿Pasar las horas de ${j.name} a ${keyLabel(next)}?`,
+    message: [`Las ${fmtHours(unpaidMin)} sin marcar de ${j.name} se moverán a ${j.name} en ${keyLabel(next)}, con su día real.`,
+      `En ${keyLabel(app.key)}, ${j.name} sólo conservará las horas marcadas. Las demás empresas no cambian.`],
     buttons: [{ label: 'Pasar horas', value: true, class: 'primary' }, { label: 'Cancelar', value: null, class: 'ghost' }],
   });
   if (!ok) return;
   ensureMonth(app.state, app.key, app.virtual);
-  mutateState((st) => { moveUnpaidHours(st, app.key, next, app.virtual); });
-  toast(`${fmtHours(unpaidMin)} pasadas a ${keyLabel(next)}`);
+  mutateState((st) => { moveUnpaidHours(st, app.key, next, app.virtual, j.id); });
+  toast(`${j.name}: ${fmtHours(unpaidMin)} pasadas a ${keyLabel(next)}`);
 }
 
 async function editJob(j) {
@@ -1269,7 +1268,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.10 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.11 · funciona sin conexión'),
   );
 }
 

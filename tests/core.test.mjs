@@ -368,12 +368,14 @@ test('horas sin cobrar: pasan al mes siguiente con su día, a la misma empresa',
   oct.jobs.push(tm);
   const virtual = new Map();
   virtual.set('2026-11', buildMonth(s, '2026-11'));
-  assert.equal(moveUnpaidHours(s, '2026-10', '2026-11', virtual), 330);
+  assert.equal(moveUnpaidHours(s, '2026-10', '2026-11', virtual, tm.id), 90, 'sólo Teresa Mann');
+  assert.deepEqual(oct.jobs.map((j) => j.entries.length), [3, 0]);
+  assert.equal(moveUnpaidHours(s, '2026-10', '2026-11', virtual, steps.id), 240, 'luego Steps');
   assert.deepEqual(oct.jobs.map((j) => j.entries.length), [1, 0], 'en octubre sólo quedan las cobradas');
   const nov = s.months['2026-11'];
   assert.ok(nov, 'noviembre se guarda');
   assert.deepEqual(nov.jobs.map((j) => [j.name, j.rate, j.entries.map((x) => x.date)]),
-    [['Steps', 2000, ['2026-10-27', '2026-10-28']], ['Teresa Mann', 1500, ['2026-10-29']]]);
+    [['Steps', 2000, ['2026-10-27', '2026-10-28']], ['Teresa Mann', 1500, ['2026-10-29']]].sort((a, b) => nov.jobs.findIndex((j) => j.name === a[0]) - nov.jobs.findIndex((j) => j.name === b[0])));
   assert.equal(moveUnpaidHours(s, '2026-10', '2026-11', virtual), 0, 'no se mueve dos veces');
   assert.equal(normalizeState(JSON.parse(JSON.stringify(s))).months['2026-10'].jobs[0].entries[0].paid, true);
 });

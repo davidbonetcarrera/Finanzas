@@ -191,12 +191,18 @@ const xlsxMonth = await dl('Descargar Excel');
 
 // 7b. Fin de mes: las horas sin cobrar pasan al mes siguiente
 await page.getByRole('button', { name: 'Ingresos', exact: true }).click();
-await page.getByRole('button', { name: /Pasar 4 h 30 min sin cobrar a/ }).click();
+// por empresa: primero Steps (Teresa Mann no cambia), luego Teresa Mann
+await stepsJob.getByRole('button', { name: /Pasar 2 h 30 min sin marcar a/ }).click();
+assert.match(await dlg().textContent(), /horas de Steps/);
+await dlg().getByRole('button', { name: 'Pasar horas' }).click();
+await page.waitForTimeout(200);
+assert.match(await page.locator('.job', { hasText: 'Teresa Mann' }).locator('.tx-head').textContent(), /Total 2 h/);
+await page.locator('.job', { hasText: 'Teresa Mann' }).getByRole('button', { name: /Pasar 2 h sin marcar a/ }).click();
 await dlg().getByRole('button', { name: 'Pasar horas' }).click();
 await page.waitForTimeout(200);
 assert.match(await stepsJob.locator('.tx-head').textContent(), /Total 3 h.*✓ cobrado/);
 assert.match(await page.locator('.job', { hasText: 'Teresa Mann' }).locator('.tx-head').textContent(), /Total 0 h/);
-assert.equal(await page.getByRole('button', { name: /sin cobrar a/ }).count(), 0);
+assert.equal(await page.getByRole('button', { name: /sin marcar a/ }).count(), 0);
 await page.getByRole('button', { name: 'Mes siguiente' }).click();
 assert.match(await page.locator('.job', { hasText: 'Steps' }).locator('.tx-head').textContent(), /Total 2 h 30 min.*\$50\.00/);
 assert.match(await page.locator('.job', { hasText: 'Teresa Mann' }).locator('.tx-head').textContent(), /Total 2 h.*\$30\.00/);
