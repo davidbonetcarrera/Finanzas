@@ -7,7 +7,8 @@ import {
 } from './model.js';
 import { itemCalc, monthCalc, periodCalc, reopenBudgets, pendingReimbBefore } from './calc.js';
 import { createSession, seal, open, openWith, isEnvelope, MIN_PASSPHRASE } from './crypto.js';
-import { loadVault, saveVault, wipeVault, requestPersistence, loadSync, saveSync } from './store.js';
+import { loadVault, saveVault, wipeVault, requestPersistence, loadSync, saveSync, loadBio, saveBio } from './store.js';
+import { bioAvailable, bioPlatformReady, bioCreate, bioUnlock } from './bio.js';
 import { syncConfigured, newCode, extractCode, isCode, remoteRev, remoteGet, remotePut, merge3 } from './sync.js';
 import { stackedBars, balanceBars, legend } from './charts.js';
 import { workbookSheets, fileSlug } from './reports.js';
@@ -202,6 +203,7 @@ async function askRemotePassword(env) {
     sync.askedPass = false;
     dirty = true;
     await flushSave();
+    if (await loadBio()) { await saveBio(null); bioOn = false; }
     toast('Contraseña actualizada');
     syncNow();
   } catch {
@@ -1236,6 +1238,7 @@ function viewSettings() {
       h('div', { class: 'row-actions' },
         h('button', { class: 'btn', onclick: () => lock() }, 'Bloquear ahora'),
         h('button', { class: 'btn ghost', onclick: changePassword }, 'Cambiar contraseña')),
+      bioRow(),
     ),
     h('section', { class: 'card' + (days === null || days > 30 ? ' attention' : '') },
       h('h2', null, 'Copia de seguridad'),
@@ -1271,7 +1274,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.12 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.13 · funciona sin conexión'),
   );
 }
 
@@ -1377,6 +1380,56 @@ async function importBackup(fromSetup) {
 // ---------------------------------------------------------------------------
 // Bloqueo, contraseña y arranque
 
+// ---------------------------------------------------------------------------
+// Face ID
+
+let bioOn = null; // null = sin comprobar
+async function refreshBio() {
+  const before = bioOn;
+  try { bioOn = !!(await loadBio()); } catch { bioOn = false; }
+  if (before !== bioOn && app.state && app.tab === 'ajustes') render();
+}
+
+function bioRow() {
+  if (!bioAvailable()) return null;
+  if (bioOn === null) { refreshBio(); return null; }
+  return h('div', { class: 'bio-row' },
+    h('p', { class: 'small' }, bioOn ? '✓ Face ID activado: puedes desbloquear sin escribir la contraseña.' : 'Desbloquea la app con Face ID en vez de escribir la contraseña (la contraseña sigue funcionando).'),
+    bioOn ? h('button', { class: 'btn small ghost', onclick: disableBio }, 'Desactivar Face ID')
+      : h('button', { class: 'btn small primary', onclick: enableBio }, 'Activar Face ID'));
+}
+
+async function enableBio() {
+  if (!(await bioPlatformReady())) { toast('Este dispositivo no permite Face ID para esta app', 'error'); return; }
+  const v = await formSheet({
+    title: 'Activar Face ID',
+    fields: [
+      { type: 'note', name: 'n', label: 'Escribe tu contraseña una vez. Se guardará cifrada en este móvil y sólo se podrá usar después de pasar Face ID.' },
+      { name: 'pass', label: 'Contraseña', type: 'password', required: true, autofocus: true },
+    ],
+    submitLabel: 'Continuar',
+  });
+  if (!v || v === 'delete') return;
+  try { await flushSave(); await open(await loadVault(), v.pass); } catch { toast('La contraseña no es correcta', 'error'); return; }
+  try {
+    const rec = await bioCreate(v.pass);
+    await saveBio(rec);
+    bioOn = true;
+    toast('Face ID activado');
+    render();
+  } catch (e) {
+    console.warn(e);
+    toast(e && e.message === 'NO_PRF' ? 'Tu iPhone necesita iOS 18 o posterior para usar Face ID aquí' : 'No se activó Face ID', 'error');
+  }
+}
+
+async function disableBio() {
+  await saveBio(null);
+  bioOn = false;
+  toast('Face ID desactivado. La llave de acceso «Finanzas» puedes borrarla en Ajustes → Contraseñas del iPhone.');
+  render();
+}
+
 async function changePassword() {
   const v = await formSheet({
     title: 'Cambiar contraseña',
@@ -1391,6 +1444,7 @@ async function changePassword() {
   await flushSave();
   try { await open(await loadVault(), v.old); } catch { toast('La contraseña actual no es correcta', 'error'); return; }
   app.session = await createSession(v.p1);
+  if (bioOn) { await saveBio(null).catch(() => {}); bioOn = false; toast('Vuelve a activar Face ID con la contraseña nueva'); }
   sync.force = true;
   dirty = true;
   await flushSave();
@@ -1451,6 +1505,26 @@ async function showLock() {
   const err = h('p', { class: 'form-error', role: 'alert' });
   const pass = h('input', { type: 'password', autocomplete: 'current-password', placeholder: 'Contraseña', 'aria-label': 'Contraseña', enterkeyhint: 'go' });
   const btn = h('button', { type: 'submit', class: 'btn primary block' }, 'Desbloquear');
+  let bio = null;
+  try { bio = bioAvailable() ? await loadBio() : null; } catch { bio = null; }
+  const bioBtn = bio ? h('button', { type: 'button', class: 'btn block bio-btn', onclick: async () => {
+    err.textContent = '';
+    let p;
+    try { p = await bioUnlock(bio); } catch (e) { console.warn(e); err.textContent = 'No se pudo usar Face ID. Escribe la contraseña.'; return; }
+    bioBtn.disabled = true; bioBtn.textContent = 'Abriendo…';
+    try {
+      const { session, data } = await open(vault, p);
+      setFailInfo({ n: 0, until: 0 });
+      app.session = session;
+      app.state = normalizeState(data);
+      startSessionUi();
+    } catch {
+      // La contraseña cambió desde que se activó Face ID: se desactiva
+      await saveBio(null).catch(() => {});
+      bioBtn.remove();
+      err.textContent = 'La contraseña cambió. Escríbela y vuelve a activar Face ID en Ajustes.';
+    }
+  } }, 'Desbloquear con Face ID') : null;
   const form = h('form', { class: 'lock-form', onsubmit: async (e) => {
     e.preventDefault();
     const f = failInfo();
@@ -1474,10 +1548,11 @@ async function showLock() {
   } }, pass, btn, err);
   lockScreen([
     h('p', { class: 'muted' }, 'Tus datos están cifrados en este dispositivo.'),
+    bioBtn,
     form,
     h('button', { class: 'link', onclick: forgotPassword }, '¿Olvidaste la contraseña?'),
   ]);
-  setTimeout(() => pass.focus(), 50);
+  if (!bio) setTimeout(() => pass.focus(), 50);
 }
 
 async function forgotPassword() {

@@ -119,6 +119,7 @@ En **Ajustes → Compartir en vivo → Activar y compartir**, tus datos se suben
 ## 7. Seguridad aplicada
 
 - Cifrado AES‑256‑GCM con autenticación (detecta archivos manipulados) y clave PBKDF2 de 600.000 iteraciones con sal aleatoria. La clave no es exportable y sólo vive en memoria mientras la app está desbloqueada.
+- **Face ID (v1.13, opcional):** en Ajustes → Seguridad → «Activar Face ID». Se crea una llave de acceso del iPhone (WebAuthn con extensión PRF, iOS 18+) que sólo responde tras pasar Face ID; de ella se deriva una clave AES que cifra tu contraseña en este móvil. Sin tu cara no se puede descifrar. La contraseña sigue funcionando siempre; si la cambias, Face ID se desactiva y lo vuelves a activar.
 - Bloqueo automático, botón de bloqueo y espera creciente tras 5 contraseñas incorrectas.
 - Sin servidor, sin secretos ni credenciales de configuración que proteger, y sin peticiones a terceros.
 - Content‑Security‑Policy estricta (sólo código propio, sin `eval`, sin scripts en línea). Todo el texto se inserta como texto (nunca HTML), lo que evita inyecciones.
@@ -131,6 +132,7 @@ En **Ajustes → Compartir en vivo → Activar y compartir**, tus datos se suben
 ## 8. Pruebas
 
 - `node --test tests/` ejecuta 15 pruebas: cálculos (incluido el ejemplo de $600 y $475.50, y el de $3,000, $2,000 y $1,200), 2.000 transacciones, independencia de meses, plantillas, resumen anual, cifrado (contraseña errónea y manipulación), validación de copias y Excel.
+- `node tests/e2e-bio.mjs` prueba Face ID con un autenticador virtual: activar, desbloquear, contraseña como respaldo, fallo sin credencial y desactivar.
 - `node tests/e2e.mjs` (requiere Playwright) prueba la app completa en un iPhone simulado: contraseña, ingresos, gastos fijos, Super con 4 compras, bebé con exceso, generales, totales, mes siguiente independiente, resumen anual, PDF y Excel, recarga, bloqueo, datos cifrados en disco, copia restaurada en un Android simulado, tema claro y apertura sin conexión.
 
 ## Estructura

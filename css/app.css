@@ -386,3 +386,6 @@ pre.invite { white-space: pre-wrap; word-break: break-all; font-size: .85rem; ba
 .hours-sub small { color: var(--muted); }
 .hours-sub b { color: var(--olive); }
 .cat-total small { display: block; font-size: .7rem; font-weight: 400; color: var(--muted); text-align: right; }
+.bio-row { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line, rgba(127,127,127,.2)); }
+.bio-row .btn { align-self: flex-start; }
+.lock .bio-btn { max-width: 340px; margin-top: 10px; }

@@ -54,6 +54,18 @@ export function saveSync(rec) {
   return tx('readwrite', (s) => { if (rec) s.put(rec, 'sync'); else s.delete('sync'); });
 }
 
+// Desbloqueo con Face ID: { v, id, salt, iv, ct } (contraseña cifrada con la llave de acceso)
+export function loadBio() {
+  return tx('readonly', (s) => new Promise((res, rej) => {
+    const r = s.get('bio');
+    r.onsuccess = () => res(r.result || null);
+    r.onerror = () => rej(r.error);
+  }));
+}
+export function saveBio(rec) {
+  return tx('readwrite', (s) => { if (rec) s.put(rec, 'bio'); else s.delete('bio'); });
+}
+
 export function wipeVault() {
   return tx('readwrite', (s) => { s.clear(); });
 }
