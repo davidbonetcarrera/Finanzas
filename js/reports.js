@@ -74,7 +74,7 @@ export function workbookSheets(state, keys, now = new Date()) {
   const sheets = [];
 
   // --- Resumen ---
-  const head = ['Mes', 'Ingresos', 'Gastos fijos', 'Gastos bebé', 'Gastos generales', 'Gasto real total',
+  const head = ['Mes', 'Ingresos', 'Gastos fijos (con presupuesto)', 'Gastos bebé (con presupuesto)', 'Gastos generales (con presupuesto)', 'Gasto real total',
     'Pagado', 'Pendiente de pago', 'Presupuesto por gastar (reservado)', 'Ahorro', 'Reembolsos cobrados', 'Saldo libre (ingresos − gastos − reservado − ahorro + reembolsos cobrados)', 'Disponible tras pagos y ahorro (+ reembolsos cobrados)', 'Reembolsos por cobrar',
     'Presupuesto asignado', 'Gasto real en partidas con presupuesto', 'Presupuesto restante (− = exceso)'];
   const rows = [
@@ -87,7 +87,7 @@ export function workbookSheets(state, keys, now = new Date()) {
   const first = rows.length + 1;
   for (const m of r.months) {
     const c = m.calc;
-    rows.push([m.label, M(c.income), M(c.cats.fixed.real), M(c.cats.baby.real), M(c.cats.general.real), M(c.real),
+    rows.push([m.label, M(c.income), M(c.cats.fixed.committed), M(c.cats.baby.committed), M(c.cats.general.committed), M(c.real),
       M(c.paid), M(c.pending), M(c.reserved), M(c.savings), M(c.reimbDone), M(c.balance), M(c.cashNow), M(c.reimbPending), M(c.budget), M(c.budgetReal), M(c.budgetRemaining)]);
   }
   const last = rows.length;

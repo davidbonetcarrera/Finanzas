@@ -71,9 +71,9 @@ export async function buildPdf(state, keys) {
       head: [['Concepto', 'Importe']],
       body: [
         ['Total de ingresos', money(c.income)],
-        ['Gastos fijos (reales)', money(c.cats.fixed.real)],
-        ['Gastos del bebé (reales)', money(c.cats.baby.real)],
-        ['Gastos generales (reales)', money(c.cats.general.real)],
+        ['Gastos fijos (con presupuesto)', money(c.cats.fixed.committed)],
+        ['Gastos del bebé (con presupuesto)', money(c.cats.baby.committed)],
+        ['Gastos generales (con presupuesto)', money(c.cats.general.committed)],
         ['Gasto real total', money(c.real)],
         ['Pagado', money(c.paid)],
         ['Pendiente de pago', money(c.pending)],
@@ -153,9 +153,9 @@ export async function buildPdf(state, keys) {
       head: [['Concepto', 'Acumulado', `Promedio mensual (${r.period.monthsWithData} meses con datos)`]],
       body: [
         ['Ingresos', money(t.income), money(a.income)],
-        ['Gastos fijos', money(t.fixed), money(a.fixed)],
-        ['Gastos del bebé', money(t.baby), money(a.baby)],
-        ['Gastos generales', money(t.general), money(a.general)],
+        ['Gastos fijos (con presupuesto)', money(t.fixed), money(a.fixed)],
+        ['Gastos del bebé (con presupuesto)', money(t.baby), money(a.baby)],
+        ['Gastos generales (con presupuesto)', money(t.general), money(a.general)],
         ['Gasto real total', money(t.real), money(a.real)],
         ['Pagado', money(t.paid), money(a.paid)],
         ['Pendiente de pago', money(t.pending), money(a.pending)],
@@ -194,7 +194,7 @@ export async function buildPdf(state, keys) {
     section('Comparación mensual');
     table({
       head: [['Mes', 'Ingresos', 'Fijos', 'Bebé', 'Generales', 'Gasto real', 'Pagado', 'Pendiente', 'Ahorro', 'Saldo libre']],
-      body: r.months.map((m) => [m.label, money(m.calc.income), money(m.calc.cats.fixed.real), money(m.calc.cats.baby.real), money(m.calc.cats.general.real), money(m.calc.real), money(m.calc.paid), money(m.calc.pending), money(m.calc.savings), money(m.calc.balance)]),
+      body: r.months.map((m) => [m.label, money(m.calc.income), money(m.calc.cats.fixed.committed), money(m.calc.cats.baby.committed), money(m.calc.cats.general.committed), money(m.calc.real), money(m.calc.paid), money(m.calc.pending), money(m.calc.savings), money(m.calc.balance)]),
       foot: [['Total', money(t.income), money(t.fixed), money(t.baby), money(t.general), money(t.real), money(t.paid), money(t.pending), money(t.savings), money(t.balance)]],
       columnStyles: right([1, 2, 3, 4, 5, 6, 7, 8, 9]),
       styles: { ...base.styles, fontSize: 7, cellPadding: 2.5 },

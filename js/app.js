@@ -374,6 +374,7 @@ function mutateState(fn) {
 }
 
 const month = () => viewMonth(app.state, app.key, app.virtual);
+const closedMonth = () => !!month().budgetsClosed;
 const defaultDate = () => (todayISO().startsWith(app.key) ? todayISO() : '');
 
 // ---------------------------------------------------------------------------
@@ -678,7 +679,8 @@ function categorySection(m, cat, label) {
   const items = m[cat];
   const isOpen = app.open.has(cat);
   let real = 0, pending = 0, budget = 0;
-  for (const it of items) { const c = itemCalc(it); real += c.real; pending += c.pending; if (c.hasBudget) budget += c.budget; }
+  let shown = 0;
+  for (const it of items) { const c = itemCalc(it); real += c.real; pending += c.pending; if (c.hasBudget) budget += c.budget; shown += (cat === 'savings' || closedMonth()) ? c.real : c.committed; }
   const isSav = cat === 'savings';
   const addLabel = cat === 'fixed' ? '+ Añadir gasto fijo' : cat === 'baby' ? '+ Añadir partida del bebé' : isSav ? '+ Añadir ahorro' : '+ Añadir gasto';
   return h('section', { class: 'card cat cat-' + cat + (isOpen ? ' open' : '') },
@@ -688,7 +690,7 @@ function categorySection(m, cat, label) {
         (isSav
           ? ['No es gasto: se resta aparte del saldo', pending ? `por apartar ${fmt(pending)}` : null]
           : [`${items.length} partida${items.length === 1 ? '' : 's'}`, budget ? `presup. ${fmt(budget)}` : null, pending ? `pend. ${fmt(pending)}` : null]).filter(Boolean).join(' · '))),
-      h('b', { class: 'cat-total' }, fmt(real)),
+      h('b', { class: 'cat-total' }, fmt(shown), shown !== real ? h('small', null, `gastado ${fmt(real)}`) : null),
     ),
     isOpen ? h('div', { class: 'cat-body' },
       items.length === 0 ? h('p', { class: 'empty' }, cat === 'baby' ? 'Sin partidas. Crea una (p. ej. «Pañales» con presupuesto, o una compra puntual).' : isSav ? 'Sin ahorros este mes. Añade lo que quieras apartar (p. ej. «Fondo de emergencia»).' : 'Sin gastos este mes.') : null,
@@ -817,7 +819,7 @@ function txItem(cat, it) {
       h('span', { class: 'item-name' },
         h('span', null, it.name || 'Sin nombre', c.done ? h('span', { class: 'ok badge' }, '✓ Finalizado') : c.allPaid && c.real ? h('span', { class: 'ok badge' }, '✓ OK') : null),
         h('small', null, `${c.count} transacc.`, c.pending ? ` · pend. ${fmt(c.pending)}` : '')),
-      h('span', { class: 'tx-amounts' }, h('b', null, fmt(c.real)), c.hasBudget ? h('small', null, 'de ' + fmt(c.budget)) : null),
+      h('span', { class: 'tx-amounts' }, h('b', null, fmt(sav || closedMonth() ? c.real : c.committed)), c.hasBudget ? h('small', null, (sav ? '' : 'gastado ' + fmt(c.real) + ' ') + 'de ' + fmt(c.budget)) : null),
     ),
     c.hasBudget ? h('div', { class: 'bar' + (c.over ? ' over' : '') }, h('i', { style: { width: pct + '%' } })) : null,
     h('div', { class: 'tx-status' }, c.done && c.hasBudget && !sav
@@ -1001,12 +1003,13 @@ function monthTotals(c) {
     h('section', { class: 'card' },
       h('h2', null, 'Por categoría'),
       h('table', { class: 'tbl' },
-        h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Real'), h('th', null, 'Pagado'), h('th', null, 'Pend.'))),
+        h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Gasto'), h('th', null, 'Pagado'), h('th', null, 'Pend.'))),
         h('tbody', null, CATS.map(({ key, label }) => h('tr', null, h('td', null, label.replace('Gastos ', '').replace(/^\w/, (x) => x.toUpperCase())),
-          h('td', null, fmt(c.cats[key].real)), h('td', null, fmt(c.cats[key].paid)), h('td', null, fmt(c.cats[key].pending))))),
-        h('tfoot', null, h('tr', null, h('td', null, 'Total gastos'), h('td', null, fmt(c.real)), h('td', null, fmt(c.paid)), h('td', null, fmt(c.pending))),
+          h('td', null, fmt(c.cats[key].committed)), h('td', null, fmt(c.cats[key].paid)), h('td', null, fmt(c.cats[key].pending))))),
+        h('tfoot', null, h('tr', null, h('td', null, 'Total gastos'), h('td', null, fmt(c.committed)), h('td', null, fmt(c.paid)), h('td', null, fmt(c.pending))),
           h('tr', { class: 'sav-row' }, h('td', null, 'Ahorros'), h('td', null, fmt(c.savings)), h('td', null, fmt(c.savingsDone)), h('td', null, fmt(c.savingsPending))),
           c.reimb ? h('tr', { class: 'reimb-row' }, h('td', null, 'Reembolsos'), h('td', null, fmt(c.reimb)), h('td', null, fmt(c.reimbDone)), h('td', null, fmt(c.reimbPending))) : null)),
+      c.reserved ? h('p', { class: 'muted small' }, `«Gasto» cuenta el presupuesto completo de lo que aún no has finalizado (${fmt(c.reserved)} por gastar). Lo gastado de verdad: ${fmt(c.real)}.`) : null,
       (c.savings || c.reimb) ? h('p', { class: 'muted small' }, 'En ahorros, «Pagado» es lo ya apartado; en reembolsos, lo que ya os devolvieron.') : null,
     ),
     h('section', { class: 'card' },
@@ -1121,8 +1124,8 @@ function periodTotals() {
       h('table', { class: 'tbl' },
         h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Total'), h('th', null, 'Promedio/mes'), h('th', null, '%'))),
         h('tbody', null, [['fixed', 'Fijos'], ['baby', 'Bebé'], ['general', 'Generales']].map(([k, lab]) => h('tr', null,
-          h('td', null, lab), h('td', null, fmt(t[k])), h('td', null, fmt(p.avg[k])), h('td', null, t.real ? Math.round((t[k] / t.real) * 100) + '%' : '—')))),
-        h('tfoot', null, h('tr', null, h('td', null, 'Total gastos'), h('td', null, fmt(t.real)), h('td', null, fmt(p.avg.real)), h('td', null, '')),
+          h('td', null, lab), h('td', null, fmt(t[k])), h('td', null, fmt(p.avg[k])), h('td', null, t.committed ? Math.round((t[k] / t.committed) * 100) + '%' : '—')))),
+        h('tfoot', null, h('tr', null, h('td', null, 'Total gastos'), h('td', null, fmt(t.committed)), h('td', null, fmt(p.avg.committed)), h('td', null, '')),
           h('tr', { class: 'sav-row' }, h('td', null, 'Ahorros'), h('td', null, fmt(t.savings)), h('td', null, fmt(p.avg.savings)), h('td', null, '')),
           t.reimb ? h('tr', { class: 'reimb-row' }, h('td', null, 'Reembolsos'), h('td', null, fmt(t.reimb)), h('td', { colspan: 2 }, t.reimbPending ? `por cobrar ${fmt(t.reimbPending)}` : 'todo cobrado')) : null)),
       h('p', { class: 'muted small' }, `Promedios calculados sólo con los ${p.monthsWithData} meses que tienen datos reales; los presupuestos no cuentan.`),
@@ -1268,7 +1271,7 @@ function viewSettings() {
       h('p', { class: 'muted small' }, 'Elimina todos los datos de este dispositivo. No se puede deshacer: descarga antes una copia.'),
       h('button', { class: 'btn danger', onclick: wipeAll }, 'Borrar todo'),
     ),
-    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.11 · funciona sin conexión'),
+    h('p', { class: 'muted small center' }, 'Finanzas personales · v1.12 · funciona sin conexión'),
   );
 }
 

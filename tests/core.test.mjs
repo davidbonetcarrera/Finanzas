@@ -215,7 +215,7 @@ test('resumen anual: promedios sólo con meses con datos, presupuestos aparte', 
   assert.equal(p.totals.reserved, 20000, 'febrero aún reserva $200 del súper');
   assert.equal(p.totals.balance, 270000);
   assert.equal(p.avg.real, 155000);
-  assert.equal(p.avg.fixed, 155000);
+  assert.equal(p.avg.fixed, 165000, 'fijos cuentan el presupuesto sin gastar de febrero');
   assert.equal(p.totals.budget, 120000);
   const sup = p.budgets.find((b) => b.name === 'Super');
   assert.deepEqual([sup.budget, sup.real, sup.diff, sup.monthsOver], [120000, 110000, 10000, 1]);

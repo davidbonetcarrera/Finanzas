@@ -95,7 +95,7 @@ await page.locator('.tx-head', { hasText: 'Super' }).click();
 const pres = page.getByLabel('Presupuesto de Super');
 await pres.fill('600'); await pres.press('Enter');
 await page.waitForTimeout(100);
-assert.match(await page.locator('.item.tx', { hasText: 'Super' }).textContent(), /\$0\.00de \$600\.00/);
+assert.match(await page.locator('.item.tx', { hasText: 'Super' }).textContent(), /\$600\.00gastado \$0\.00 de \$600\.00/);
 for (const [a, paid] of [['120', true], ['150.50', true], ['90', false], ['115', false]]) {
   await page.locator('.item.tx', { hasText: 'Super' }).getByRole('button', { name: '+ Transacción' }).click();
   await fill('Importe real', a); await fill('Descripción', 'Compra semanal');
@@ -105,7 +105,7 @@ for (const [a, paid] of [['120', true], ['150.50', true], ['90', false], ['115',
   await submit();
 }
 const superTxt = await page.locator('.item.tx', { hasText: 'Super' }).textContent();
-assert.match(superTxt, /\$475\.50de \$600\.00/);
+assert.match(superTxt, /\$600\.00gastado \$475\.50 de \$600\.00/);
 assert.match(superTxt, /Quedan \$124\.50/);
 assert.match(superTxt, /pend\. \$205\.00/);
 await shot('02-gastos-super');

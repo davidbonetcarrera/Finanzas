@@ -385,3 +385,4 @@ pre.invite { white-space: pre-wrap; word-break: break-all; font-size: .85rem; ba
 .hours-sub { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 8px 2px; border-top: 1px solid var(--line); }
 .hours-sub small { color: var(--muted); }
 .hours-sub b { color: var(--olive); }
+.cat-total small { display: block; font-size: .7rem; font-weight: 400; color: var(--muted); text-align: right; }

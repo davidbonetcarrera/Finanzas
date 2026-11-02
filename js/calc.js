@@ -26,6 +26,7 @@ export function itemCalc(item) {
       count: item.tx.length,
       done: !!item.done,
       reserved: !item.done && hasBudget && budget > real ? budget - real : 0,
+      committed: !item.done && hasBudget && budget > real ? budget : real, // gasto que cuenta: presupuesto completo hasta finalizar
       allPaid: item.tx.length > 0 && paid === real && item.tx.every((t) => t.paid),
     };
   }
@@ -33,7 +34,7 @@ export function itemCalc(item) {
   const paid = item.paid ? real : 0;
   return {
     mode: 'direct', real, paid, pending: real - paid, budget: 0, hasBudget: false,
-    remaining: null, over: 0, count: 0, done: false, reserved: 0, allPaid: !!item.paid,
+    remaining: null, over: 0, count: 0, done: false, reserved: 0, committed: real, allPaid: !!item.paid,
   };
 }
 
@@ -72,6 +73,7 @@ export function monthCalc(month) {
   const closed = !!(month && month.budgetsClosed);
   // presupuesto aún sin gastar de partidas no finalizadas, ya restado del saldo
   const reserved = closed ? 0 : cats.fixed.reserved + cats.baby.reserved + cats.general.reserved;
+  for (const { key } of CATS) cats[key].committed = cats[key].real + (closed ? 0 : cats[key].reserved);
   const committed = real + reserved;          // gastos reales + presupuesto reservado
   return {
     income, cats, real, paid, pending,
@@ -101,7 +103,7 @@ export function periodCalc(state, keys) {
     tot.balance += m.balance; tot.savings += m.savings; tot.savingsDone += m.savingsDone; tot.spendBalance += m.spendBalance; tot.reserved += m.reserved; tot.committed += m.committed; tot.reimb += m.reimb; tot.reimbDone += m.reimbDone; tot.reimbPending += m.reimbPending;
     tot.budget += m.budget; tot.budgetReal += m.budgetReal;
     tot.unspent += m.unspent; tot.over += m.over;
-    for (const { key } of CATS) tot[key] += m.cats[key].real;
+    for (const { key } of CATS) tot[key] += m.cats[key].committed; // con presupuesto por gastar
   }
   const avg = {};
   for (const k of ['income', 'real', 'paid', 'pending', 'balance', 'savings', 'reserved', 'committed', 'fixed', 'baby', 'general']) {
